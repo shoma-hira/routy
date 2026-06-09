@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { AppShell } from "../_components/AppShell";
+import { LogoutButton } from "../_components/LogoutButton";
 import { myPosts, savedPosts, type RoutyPost } from "../_data/posts";
 
 function CompactPost({ post }: { post: RoutyPost }) {
@@ -11,6 +12,7 @@ function CompactPost({ post }: { post: RoutyPost }) {
           src={post.coverImage}
           alt={`${post.title}の表紙画像`}
           fill
+          unoptimized
           sizes="84px"
           className="object-cover"
         />
@@ -28,8 +30,9 @@ function CompactPost({ post }: { post: RoutyPost }) {
 export default function MyPage() {
   return (
     <AppShell>
-      <header className="sticky top-0 z-10 border-b border-zinc-100 bg-white/95 px-5 py-4 backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100 bg-white/95 px-5 py-4 backdrop-blur">
         <h1 className="text-xl font-semibold">マイページ</h1>
+        <LogoutButton />
       </header>
 
       <div className="px-5 py-6">

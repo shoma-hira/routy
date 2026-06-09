@@ -11,6 +11,7 @@ export function PostCard({ post }: { post: RoutyPost }) {
             src={post.coverImage}
             alt={`${post.title}の表紙画像`}
             fill
+            unoptimized
             sizes="calc((min(100vw, 430px) - 44px) / 2)"
             className="object-cover"
           />

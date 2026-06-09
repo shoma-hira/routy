@@ -58,6 +58,7 @@ function CoverSlide({ post }: { post: RoutyPostDetail }) {
         src={post.coverImage}
         alt={`${post.title}のタイトル写真`}
         fill
+        unoptimized
         priority
         sizes="min(100vw, 430px)"
         className="object-cover"
