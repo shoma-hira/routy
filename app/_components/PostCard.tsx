@@ -1,8 +1,17 @@
 import Link from "next/link";
 import Image from "next/image";
-import type { RoutyPost } from "../_data/posts";
 
-export function PostCard({ post }: { post: RoutyPost }) {
+export type PostCardPost = {
+  id: string;
+  title: string;
+  author: string;
+  coverImage: string;
+  saved?: boolean;
+};
+
+export function PostCard({ post }: { post: PostCardPost }) {
+  const isSaved = Boolean(post.saved);
+
   return (
     <article className="min-w-0 w-full overflow-hidden rounded-xl border border-zinc-100 bg-white">
       <Link href={`/posts/${post.id}`} className="block w-full">
@@ -30,12 +39,12 @@ export function PostCard({ post }: { post: RoutyPost }) {
           type="button"
           aria-label="投稿を保存"
           className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs ${
-            post.saved
+            isSaved
               ? "border-zinc-950 bg-zinc-950 text-white"
               : "border-zinc-200 bg-white text-zinc-700"
           }`}
         >
-          {post.saved ? "●" : "○"}
+          ☆
         </button>
       </div>
     </article>
