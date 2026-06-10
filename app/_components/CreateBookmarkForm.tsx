@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export type ScheduleContent = {
   contentName: string;
@@ -39,6 +40,54 @@ const minuteOptions = Array.from({ length: 60 }, (_, index) =>
   String(index).padStart(2, "0"),
 );
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+
+  return "投稿の保存に失敗しました。";
+}
+
+function toMinutes(time: string) {
+  const [hourText, minuteText] = time.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+
+  if (
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute) ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+
+  return hour * 60 + minute;
+}
+
+function getStayDuration(item: ScheduleContent) {
+  const startMinutes = toMinutes(item.startTime);
+  const endMinutes = toMinutes(item.endTime);
+
+  if (startMinutes === null || endMinutes === null) {
+    return null;
+  }
+
+  const duration = endMinutes - startMinutes;
+
+  if (duration < 0) {
+    return null;
+  }
+
+  return `${duration}分`;
+}
+
 export function CreateBookmarkForm({
   mode = "create",
   initialValue,
@@ -60,6 +109,8 @@ export function CreateBookmarkForm({
   const [actualSchedule, setActualSchedule] = useState<ScheduleContent[]>(
     initialValue?.actualSchedule ?? [],
   );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const activeSchedule =
     activeKind === "planned" ? plannedSchedule : actualSchedule;
@@ -116,10 +167,98 @@ export function CreateBookmarkForm({
     });
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     console.log(isEdit ? "ROUTY update post" : "ROUTY create post", postValue);
+
     if (isEdit) {
       router.push(returnHref);
+      return;
+    }
+
+    const trimmedTitle = title.trim();
+    const scheduleToSave = activeSchedule.filter(
+      (item) =>
+        item.contentName.trim() ||
+        item.startTime ||
+        item.endTime ||
+        item.comment.trim(),
+    );
+
+    if (!trimmedTitle) {
+      setSubmitError("タイトルを入力してください。");
+      return;
+    }
+
+    if (scheduleToSave.length === 0) {
+      setSubmitError("スケジュールを1件以上入力してください。");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        throw new Error("ログイン情報を取得できませんでした。再ログインしてください。");
+      }
+
+      const { data: post, error: postError } = await supabase
+        .from("posts")
+        .insert({
+          user_id: user.id,
+          title: trimmedTitle,
+          cover_image_url: null,
+          type: activeKind === "planned" ? "plan" : "actual",
+          is_published: true,
+        })
+        .select("id")
+        .single();
+
+      if (postError) {
+        throw postError;
+      }
+
+      if (!post?.id) {
+        throw new Error("投稿IDを取得できませんでした。");
+      }
+
+      const scheduleRows = scheduleToSave.map((item, index) => ({
+        post_id: post.id,
+        sort_order: index,
+        time: item.startTime || null,
+        spot_name: item.contentName.trim(),
+        stay_duration: getStayDuration(item),
+        comment: item.comment.trim() || null,
+        image_url: null,
+      }));
+
+      const { error: scheduleError } = await supabase
+        .from("schedule_items")
+        .insert(scheduleRows);
+
+      if (scheduleError) {
+        throw scheduleError;
+      }
+
+      console.log("ROUTY create post success", {
+        postId: post.id,
+        scheduleItemCount: scheduleRows.length,
+      });
+      router.push("/home");
+    } catch (error) {
+      console.error("ROUTY create post failed", error);
+      setSubmitError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -135,23 +274,28 @@ export function CreateBookmarkForm({
         <button
           type="button"
           onClick={handleSubmit}
-          className="text-sm font-semibold text-zinc-950"
+          disabled={isSubmitting}
+          className="text-sm font-semibold text-zinc-950 disabled:text-zinc-400"
         >
-          {isEdit ? "保存" : "投稿"}
+          {isSubmitting ? "投稿中..." : isEdit ? "保存" : "投稿"}
         </button>
       </header>
 
       <div className="space-y-5 px-4 py-5 pb-28">
+        {submitError ? (
+          <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700">
+            {submitError}
+          </p>
+        ) : null}
+
         <section>
           <label className="block">
-            <span className="text-sm font-semibold text-zinc-900">
-              タイトル
-            </span>
+            <span className="text-sm font-semibold text-zinc-900">タイトル</span>
             <input
               name="title"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="自由が丘でのんびり過ごす休日"
+              placeholder="週末のカフェ巡り"
               className="mt-2 h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-base outline-none placeholder:text-zinc-400 focus:border-zinc-900"
             />
           </label>
@@ -219,9 +363,10 @@ export function CreateBookmarkForm({
         <button
           type="button"
           onClick={handleSubmit}
-          className="h-12 w-full rounded-xl bg-zinc-950 text-base font-semibold text-white"
+          disabled={isSubmitting}
+          className="h-12 w-full rounded-xl bg-zinc-950 text-base font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-400"
         >
-          {isEdit ? "保存する" : "投稿する"}
+          {isSubmitting ? "投稿中..." : isEdit ? "保存する" : "投稿する"}
         </button>
       </div>
     </div>
@@ -263,7 +408,7 @@ function ScheduleContentCard({
       <div className="space-y-4">
         <label className="block">
           <span className="text-xs font-semibold text-zinc-600">
-            コンテンツ名
+            スポット名
           </span>
           <input
             value={item.contentName}
@@ -322,7 +467,7 @@ function ScheduleContentCard({
           <textarea
             value={item.comment}
             onChange={(event) => onChange(index, "comment", event.target.value)}
-            placeholder="モーニングが美味しかった。窓側の席がおすすめ。"
+            placeholder="朝の時間帯が空いていて歩きやすかった。"
             rows={4}
             className="mt-1.5 w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm leading-6 outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
           />
