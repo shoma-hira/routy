@@ -5,6 +5,12 @@ import { AppShell } from "../_components/AppShell";
 import { PostCard, type PostCardPost } from "../_components/PostCard";
 import { posts as mockPosts } from "../_data/posts";
 import { supabase } from "@/lib/supabase";
+import {
+  getCurrentUserId,
+  getReadableSupabaseError,
+  getSavedPostIds,
+  toggleSavedPost,
+} from "@/lib/savedPosts";
 
 const tags = ["#カフェ巡り", "#週末旅", "#絶景", "#ランチ"];
 const fallbackCoverImage = mockPosts[0]?.coverImage ?? "/globe.svg";
@@ -26,31 +32,29 @@ type ProfileRow = {
 };
 
 function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (error && typeof error === "object" && "message" in error) {
-    return String((error as { message: unknown }).message);
-  }
-
-  return "投稿の取得に失敗しました。";
+  return getReadableSupabaseError(error, "投稿の取得に失敗しました。");
 }
 
-function toPostCard(post: PostRow, profile?: ProfileRow): PostCardPost {
+function toPostCard(
+  post: PostRow,
+  profile: ProfileRow | undefined,
+  savedPostIds: Set<string>,
+): PostCardPost {
   return {
     id: post.id,
     title: post.title,
     author: profile?.display_name?.trim() || "ROUTY User",
     coverImage: post.cover_image_url?.trim() || fallbackCoverImage,
-    saved: false,
+    saved: savedPostIds.has(post.id),
   };
 }
 
 export default function HomePage() {
   const [posts, setPosts] = useState<PostCardPost[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -60,6 +64,7 @@ export default function HomePage() {
       setErrorMessage(null);
 
       try {
+        const currentUserId = await getCurrentUserId();
         const { data: postRows, error: postsError } = await supabase
           .from("posts")
           .select("id,user_id,title,cover_image_url,type,is_published,created_at")
@@ -71,6 +76,7 @@ export default function HomePage() {
         }
 
         const publishedPosts = (postRows ?? []) as PostRow[];
+        const savedPostIds = await getSavedPostIds(currentUserId);
         const userIds = Array.from(
           new Set(publishedPosts.map((post) => post.user_id).filter(Boolean)),
         );
@@ -95,7 +101,7 @@ export default function HomePage() {
         }
 
         const nextPosts = publishedPosts.map((post) =>
-          toPostCard(post, profilesById.get(post.user_id)),
+          toPostCard(post, profilesById.get(post.user_id), savedPostIds),
         );
 
         console.log("ROUTY home posts loaded", {
@@ -104,6 +110,7 @@ export default function HomePage() {
         });
 
         if (isMounted) {
+          setUserId(currentUserId);
           setPosts(nextPosts);
         }
       } catch (error) {
@@ -125,6 +132,50 @@ export default function HomePage() {
       isMounted = false;
     };
   }, []);
+
+  async function handleToggleSave(postId: string) {
+    if (!userId) {
+      const message = "ログイン中のユーザーを取得できませんでした。";
+      console.error("ROUTY save toggle failed", message);
+      setSaveErrorMessage(message);
+      return;
+    }
+
+    const target = posts.find((post) => post.id === postId);
+    if (!target) return;
+
+    setSaveErrorMessage(null);
+    setPosts((currentPosts) =>
+      currentPosts.map((post) =>
+        post.id === postId ? { ...post, isSaving: true } : post,
+      ),
+    );
+
+    try {
+      const nextSaved = await toggleSavedPost({
+        userId,
+        postId,
+        saved: Boolean(target.saved),
+      });
+
+      setPosts((currentPosts) =>
+        currentPosts.map((post) =>
+          post.id === postId
+            ? { ...post, saved: nextSaved, isSaving: false }
+            : post,
+        ),
+      );
+    } catch (error) {
+      const message = getReadableSupabaseError(error, "保存処理に失敗しました。");
+      console.error("ROUTY save toggle failed", error);
+      setSaveErrorMessage(message);
+      setPosts((currentPosts) =>
+        currentPosts.map((post) =>
+          post.id === postId ? { ...post, isSaving: false } : post,
+        ),
+      );
+    }
+  }
 
   return (
     <AppShell>
@@ -166,11 +217,24 @@ export default function HomePage() {
           まだ投稿がありません
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-28">
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
-        </div>
+        <>
+          {saveErrorMessage ? (
+            <div className="px-4 pt-4">
+              <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700">
+                {saveErrorMessage}
+              </p>
+            </div>
+          ) : null}
+          <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-28">
+            {posts.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                onToggleSave={handleToggleSave}
+              />
+            ))}
+          </div>
+        </>
       )}
     </AppShell>
   );

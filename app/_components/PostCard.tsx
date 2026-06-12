@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
 
@@ -7,9 +9,16 @@ export type PostCardPost = {
   author: string;
   coverImage: string;
   saved?: boolean;
+  isSaving?: boolean;
 };
 
-export function PostCard({ post }: { post: PostCardPost }) {
+export function PostCard({
+  post,
+  onToggleSave,
+}: {
+  post: PostCardPost;
+  onToggleSave?: (postId: string) => void;
+}) {
   const isSaved = Boolean(post.saved);
 
   return (
@@ -37,14 +46,16 @@ export function PostCard({ post }: { post: PostCardPost }) {
         </Link>
         <button
           type="button"
-          aria-label="投稿を保存"
+          onClick={() => onToggleSave?.(post.id)}
+          disabled={post.isSaving || !onToggleSave}
+          aria-label={isSaved ? "保存を解除" : "投稿を保存"}
           className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs ${
             isSaved
               ? "border-zinc-950 bg-zinc-950 text-white"
               : "border-zinc-200 bg-white text-zinc-700"
-          }`}
+          } disabled:cursor-not-allowed disabled:opacity-50`}
         >
-          ☆
+          ★
         </button>
       </div>
     </article>

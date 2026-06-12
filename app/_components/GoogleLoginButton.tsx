@@ -24,12 +24,18 @@ export function GoogleLoginButton() {
     setIsLoading(true);
     setErrorMessage(null);
 
-    const { error } = await supabase.auth.signInWithOAuth({
+    const redirectTo = `${window.location.origin}/login`;
+
+    console.log("ROUTY Google OAuth redirectTo", redirectTo);
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/login`,
+        redirectTo,
       },
     });
+
+    console.log("ROUTY Google OAuth result", { data, error });
 
     if (error) {
       setErrorMessage("Googleログインを開始できませんでした。");

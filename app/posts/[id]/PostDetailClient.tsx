@@ -6,6 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import { AppShell } from "../../_components/AppShell";
 import { posts as mockPosts } from "../../_data/posts";
 import { supabase } from "@/lib/supabase";
+import {
+  getCurrentUserId,
+  getReadableSupabaseError,
+  isPostSaved,
+  toggleSavedPost,
+} from "@/lib/savedPosts";
 
 const fallbackCoverImage = mockPosts[0]?.coverImage ?? "/globe.svg";
 const slideCount = 3;
@@ -44,15 +50,7 @@ type DetailState = {
 };
 
 function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (error && typeof error === "object" && "message" in error) {
-    return String((error as { message: unknown }).message);
-  }
-
-  return "投稿詳細の取得に失敗しました。";
+  return getReadableSupabaseError(error, "投稿詳細の取得に失敗しました。");
 }
 
 function getTypeLabel(type: string | null) {
@@ -86,6 +84,10 @@ export function PostDetailClient({ postId }: { postId: string }) {
   const [detail, setDetail] = useState<DetailState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -98,6 +100,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
       setNotFound(false);
 
       try {
+        const currentUserId = await getCurrentUserId();
         const { data: post, error: postError } = await supabase
           .from("posts")
           .select("id,user_id,title,cover_image_url,type,is_published,created_at")
@@ -145,6 +148,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
           profile: profileResult.data as ProfileRow | null,
           scheduleItems: (scheduleResult.data ?? []) as ScheduleItemRow[],
         };
+        const nextIsSaved = await isPostSaved(currentUserId, post.id);
 
         console.log("ROUTY post detail loaded", {
           postId: post.id,
@@ -152,6 +156,8 @@ export function PostDetailClient({ postId }: { postId: string }) {
         });
 
         if (isMounted) {
+          setUserId(currentUserId);
+          setIsSaved(nextIsSaved);
           setDetail(nextDetail);
         }
       } catch (error) {
@@ -194,6 +200,33 @@ export function PostDetailClient({ postId }: { postId: string }) {
     setActiveIndex(nextIndex);
   }
 
+  async function handleToggleSave() {
+    if (!userId || !detail) {
+      const message = "ログイン中のユーザーまたは投稿を取得できませんでした。";
+      console.error("ROUTY detail save toggle failed", message);
+      setSaveErrorMessage(message);
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveErrorMessage(null);
+
+    try {
+      const nextSaved = await toggleSavedPost({
+        userId,
+        postId: detail.post.id,
+        saved: isSaved,
+      });
+      setIsSaved(nextSaved);
+    } catch (error) {
+      const message = getReadableSupabaseError(error, "保存処理に失敗しました。");
+      console.error("ROUTY detail save toggle failed", error);
+      setSaveErrorMessage(message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <AppShell>
       <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-zinc-100 bg-white/95 px-5 backdrop-blur">
@@ -202,10 +235,14 @@ export function PostDetailClient({ postId }: { postId: string }) {
         </Link>
         <button
           type="button"
-          className="text-sm font-semibold text-zinc-400"
-          aria-label="投稿を保存"
+          onClick={handleToggleSave}
+          disabled={isLoading || isSaving || !detail}
+          className={`text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+            isSaved ? "text-zinc-950" : "text-zinc-400"
+          }`}
+          aria-label={isSaved ? "保存を解除" : "投稿を保存"}
         >
-          ☆
+          ★
         </button>
       </header>
 
@@ -225,6 +262,13 @@ export function PostDetailClient({ postId }: { postId: string }) {
         </div>
       ) : (
         <article className="bg-white pb-28">
+          {saveErrorMessage ? (
+            <div className="px-4 pt-4">
+              <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700">
+                {saveErrorMessage}
+              </p>
+            </div>
+          ) : null}
           <section className="relative">
             <div
               ref={scrollerRef}
