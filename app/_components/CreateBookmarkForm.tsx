@@ -12,10 +12,15 @@ export type ScheduleContent = {
   endDate: string;
   endTime: string;
   comment: string;
+  stayDuration?: string;
+  imageUrl?: string;
 };
 
 export type BookmarkFormValue = {
   title: string;
+  coverImageUrl?: string;
+  type?: string | null;
+  isPublished?: boolean;
   plannedSchedule: ScheduleContent[];
   actualSchedule: ScheduleContent[];
 };
@@ -30,6 +35,8 @@ const emptyContent = (): ScheduleContent => ({
   endDate: "",
   endTime: "",
   comment: "",
+  stayDuration: "",
+  imageUrl: "",
 });
 
 const hourOptions = Array.from({ length: 24 }, (_, index) =>
@@ -72,6 +79,12 @@ function toMinutes(time: string) {
 }
 
 function getStayDuration(item: ScheduleContent) {
+  const enteredDuration = item.stayDuration?.trim();
+
+  if (enteredDuration) {
+    return enteredDuration;
+  }
+
   const startMinutes = toMinutes(item.startTime);
   const endMinutes = toMinutes(item.endTime);
 
@@ -90,17 +103,27 @@ function getStayDuration(item: ScheduleContent) {
 
 export function CreateBookmarkForm({
   mode = "create",
+  postId,
   initialValue,
   returnHref = "/home",
 }: {
   mode?: "create" | "edit";
+  postId?: string;
   initialValue?: BookmarkFormValue;
   returnHref?: string;
 }) {
   const router = useRouter();
   const isEdit = mode === "edit";
   const [title, setTitle] = useState(initialValue?.title ?? "");
-  const [activeKind, setActiveKind] = useState<ScheduleKind>("planned");
+  const [coverImageUrl, setCoverImageUrl] = useState(
+    initialValue?.coverImageUrl ?? "",
+  );
+  const [postType, setPostType] = useState(initialValue?.type ?? "plan");
+  const [isPublished, setIsPublished] = useState(
+    initialValue?.isPublished ?? true,
+  );
+  const initialKind = initialValue?.type === "actual" ? "actual" : "planned";
+  const [activeKind, setActiveKind] = useState<ScheduleKind>(initialKind);
   const [plannedSchedule, setPlannedSchedule] = useState<ScheduleContent[]>(
     initialValue?.plannedSchedule?.length
       ? initialValue.plannedSchedule
@@ -119,10 +142,13 @@ export function CreateBookmarkForm({
   const postValue = useMemo<BookmarkFormValue>(
     () => ({
       title,
+      coverImageUrl,
+      type: postType,
+      isPublished,
       plannedSchedule,
       actualSchedule,
     }),
-    [actualSchedule, plannedSchedule, title],
+    [actualSchedule, coverImageUrl, isPublished, plannedSchedule, postType, title],
   );
 
   function setScheduleForKind(
@@ -139,6 +165,7 @@ export function CreateBookmarkForm({
 
   function switchKind(kind: ScheduleKind) {
     setActiveKind(kind);
+    setPostType(kind === "planned" ? "plan" : "actual");
     if (kind === "actual" && actualSchedule.length === 0) {
       setActualSchedule([emptyContent()]);
     }
@@ -170,18 +197,15 @@ export function CreateBookmarkForm({
   async function handleSubmit() {
     console.log(isEdit ? "ROUTY update post" : "ROUTY create post", postValue);
 
-    if (isEdit) {
-      router.push(returnHref);
-      return;
-    }
-
     const trimmedTitle = title.trim();
     const scheduleToSave = activeSchedule.filter(
       (item) =>
         item.contentName.trim() ||
         item.startTime ||
         item.endTime ||
-        item.comment.trim(),
+        item.comment.trim() ||
+        item.stayDuration?.trim() ||
+        item.imageUrl?.trim(),
     );
 
     if (!trimmedTitle) {
@@ -209,6 +233,81 @@ export function CreateBookmarkForm({
 
       if (!user) {
         throw new Error("ログイン情報を取得できませんでした。再ログインしてください。");
+      }
+
+      if (isEdit) {
+        if (!postId) {
+          throw new Error("編集対象の投稿IDを取得できませんでした。");
+        }
+
+        const { data: existingPost, error: ownerCheckError } = await supabase
+          .from("posts")
+          .select("id,user_id")
+          .eq("id", postId)
+          .maybeSingle();
+
+        if (ownerCheckError) {
+          throw ownerCheckError;
+        }
+
+        if (!existingPost || existingPost.user_id !== user.id) {
+          throw new Error("この投稿を編集する権限がありません。");
+        }
+
+        const { data: updatedPost, error: updateError } = await supabase
+          .from("posts")
+          .update({
+            title: trimmedTitle,
+            cover_image_url: coverImageUrl.trim() || null,
+            type: postType || (activeKind === "planned" ? "plan" : "actual"),
+            is_published: isPublished,
+          })
+          .eq("id", postId)
+          .eq("user_id", user.id)
+          .select("id")
+          .maybeSingle();
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        if (!updatedPost?.id) {
+          throw new Error("この投稿を更新する権限がありません。");
+        }
+
+        const { error: deleteScheduleError } = await supabase
+          .from("schedule_items")
+          .delete()
+          .eq("post_id", postId);
+
+        if (deleteScheduleError) {
+          throw deleteScheduleError;
+        }
+
+        const scheduleRows = scheduleToSave.map((item, index) => ({
+          post_id: postId,
+          sort_order: index,
+          time: item.startTime || null,
+          spot_name: item.contentName.trim(),
+          stay_duration: getStayDuration(item),
+          comment: item.comment.trim() || null,
+          image_url: item.imageUrl?.trim() || null,
+        }));
+
+        const { error: scheduleError } = await supabase
+          .from("schedule_items")
+          .insert(scheduleRows);
+
+        if (scheduleError) {
+          throw scheduleError;
+        }
+
+        console.log("ROUTY update post success", {
+          postId,
+          scheduleItemCount: scheduleRows.length,
+        });
+        router.push(`/posts/${postId}`);
+        return;
       }
 
       const { data: post, error: postError } = await supabase
@@ -255,7 +354,7 @@ export function CreateBookmarkForm({
       });
       router.push("/home");
     } catch (error) {
-      console.error("ROUTY create post failed", error);
+      console.error(isEdit ? "ROUTY update post failed" : "ROUTY create post failed", error);
       setSubmitError(getErrorMessage(error));
     } finally {
       setIsSubmitting(false);
@@ -277,7 +376,7 @@ export function CreateBookmarkForm({
           disabled={isSubmitting}
           className="text-sm font-semibold text-zinc-950 disabled:text-zinc-400"
         >
-          {isSubmitting ? "投稿中..." : isEdit ? "保存" : "投稿"}
+          {isSubmitting ? (isEdit ? "保存中..." : "投稿中...") : isEdit ? "保存" : "投稿"}
         </button>
       </header>
 
@@ -300,6 +399,32 @@ export function CreateBookmarkForm({
             />
           </label>
         </section>
+
+        {isEdit ? (
+          <section className="space-y-4">
+            <label className="block">
+              <span className="text-sm font-semibold text-zinc-900">
+                表紙画像URL
+              </span>
+              <input
+                value={coverImageUrl}
+                onChange={(event) => setCoverImageUrl(event.target.value)}
+                placeholder="https://example.com/image.jpg"
+                className="mt-2 h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-base outline-none placeholder:text-zinc-400 focus:border-zinc-900"
+              />
+            </label>
+
+            <label className="flex items-center justify-between rounded-xl border border-zinc-100 bg-white px-4 py-3">
+              <span className="text-sm font-semibold text-zinc-900">公開する</span>
+              <input
+                type="checkbox"
+                checked={isPublished}
+                onChange={(event) => setIsPublished(event.target.checked)}
+                className="h-5 w-5"
+              />
+            </label>
+          </section>
+        ) : null}
 
         <section>
           <p className="mb-2 text-sm font-semibold text-zinc-900">
@@ -346,6 +471,7 @@ export function CreateBookmarkForm({
               key={`${activeKind}-${index}`}
               item={item}
               index={index}
+              isEdit={isEdit}
               onChange={updateContent}
               onRemove={removeContent}
             />
@@ -366,7 +492,7 @@ export function CreateBookmarkForm({
           disabled={isSubmitting}
           className="h-12 w-full rounded-xl bg-zinc-950 text-base font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-400"
         >
-          {isSubmitting ? "投稿中..." : isEdit ? "保存する" : "投稿する"}
+          {isSubmitting ? (isEdit ? "保存中..." : "投稿中...") : isEdit ? "保存する" : "投稿する"}
         </button>
       </div>
     </div>
@@ -376,11 +502,13 @@ export function CreateBookmarkForm({
 function ScheduleContentCard({
   item,
   index,
+  isEdit,
   onChange,
   onRemove,
 }: {
   item: ScheduleContent;
   index: number;
+  isEdit: boolean;
   onChange: (index: number, field: keyof ScheduleContent, value: string) => void;
   onRemove: (index: number) => void;
 }) {
@@ -472,6 +600,38 @@ function ScheduleContentCard({
             className="mt-1.5 w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm leading-6 outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
           />
         </label>
+
+        {isEdit ? (
+          <>
+            <label className="block">
+              <span className="text-xs font-semibold text-zinc-600">
+                滞在時間
+              </span>
+              <input
+                value={item.stayDuration ?? ""}
+                onChange={(event) =>
+                  onChange(index, "stayDuration", event.target.value)
+                }
+                placeholder="60分"
+                className="mt-1.5 h-11 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-semibold text-zinc-600">
+                画像URL
+              </span>
+              <input
+                value={item.imageUrl ?? ""}
+                onChange={(event) =>
+                  onChange(index, "imageUrl", event.target.value)
+                }
+                placeholder="https://example.com/photo.jpg"
+                className="mt-1.5 h-11 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+              />
+            </label>
+          </>
+        ) : null}
       </div>
     </article>
   );

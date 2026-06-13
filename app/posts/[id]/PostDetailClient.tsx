@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "../../_components/AppShell";
 import { posts as mockPosts } from "../../_data/posts";
@@ -80,6 +81,7 @@ function formatDate(value: string) {
 }
 
 export function PostDetailClient({ postId }: { postId: string }) {
+  const router = useRouter();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [detail, setDetail] = useState<DetailState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -88,8 +90,10 @@ export function PostDetailClient({ postId }: { postId: string }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const isOwner = Boolean(userId && detail?.post.user_id === userId);
 
   useEffect(() => {
     let isMounted = true;
@@ -105,7 +109,6 @@ export function PostDetailClient({ postId }: { postId: string }) {
           .from("posts")
           .select("id,user_id,title,cover_image_url,type,is_published,created_at")
           .eq("id", postId)
-          .eq("is_published", true)
           .maybeSingle();
 
         if (postError) {
@@ -113,6 +116,14 @@ export function PostDetailClient({ postId }: { postId: string }) {
         }
 
         if (!post) {
+          if (isMounted) {
+            setDetail(null);
+            setNotFound(true);
+          }
+          return;
+        }
+
+        if (!post.is_published && post.user_id !== currentUserId) {
           if (isMounted) {
             setDetail(null);
             setNotFound(true);
@@ -227,23 +238,88 @@ export function PostDetailClient({ postId }: { postId: string }) {
     }
   }
 
+  async function handleDeletePost() {
+    if (!userId || !detail || !isOwner) {
+      setSaveErrorMessage("この投稿を削除する権限がありません。");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "この投稿を削除しますか？この操作は取り消せません。",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setSaveErrorMessage(null);
+
+    try {
+      const { data, error } = await supabase
+        .from("posts")
+        .delete()
+        .eq("id", detail.post.id)
+        .eq("user_id", userId)
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.id) {
+        throw new Error("この投稿を削除する権限がありません。");
+      }
+
+      console.log("ROUTY delete post success", { postId: detail.post.id });
+      router.push("/mypage");
+    } catch (error) {
+      console.error("ROUTY delete post failed", error);
+      setSaveErrorMessage(
+        getReadableSupabaseError(error, "投稿の削除に失敗しました。"),
+      );
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <AppShell>
       <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-zinc-100 bg-white/95 px-5 backdrop-blur">
         <Link href="/home" className="text-sm font-medium text-zinc-600">
           戻る
         </Link>
-        <button
-          type="button"
-          onClick={handleToggleSave}
-          disabled={isLoading || isSaving || !detail}
-          className={`text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
-            isSaved ? "text-zinc-950" : "text-zinc-400"
-          }`}
-          aria-label={isSaved ? "保存を解除" : "投稿を保存"}
-        >
-          ★
-        </button>
+        <div className="flex items-center gap-3">
+          {isOwner ? (
+            <>
+              <Link
+                href={`/bookmarks/${postId}/edit`}
+                className="text-sm font-semibold text-zinc-950"
+              >
+                編集
+              </Link>
+              <button
+                type="button"
+                onClick={handleDeletePost}
+                disabled={isDeleting}
+                className="text-sm font-semibold text-red-600 disabled:cursor-not-allowed disabled:text-zinc-400"
+              >
+                {isDeleting ? "削除中..." : "削除"}
+              </button>
+            </>
+          ) : null}
+          <button
+            type="button"
+            onClick={handleToggleSave}
+            disabled={isLoading || isSaving || !detail}
+            className={`text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+              isSaved ? "text-zinc-950" : "text-zinc-400"
+            }`}
+            aria-label={isSaved ? "保存を解除" : "投稿を保存"}
+          >
+            ★
+          </button>
+        </div>
       </header>
 
       {isLoading ? (

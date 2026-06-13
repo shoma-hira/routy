@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../_components/AppShell";
 import { LogoutButton } from "../_components/LogoutButton";
@@ -85,10 +86,21 @@ function toSavedPost(
   };
 }
 
-function MyPostCard({ post }: { post: MyPost }) {
+function MyPostCard({
+  post,
+  isDeleting,
+  onDelete,
+}: {
+  post: MyPost;
+  isDeleting: boolean;
+  onDelete: (postId: string) => void;
+}) {
   return (
-    <Link href={`/posts/${post.id}`} className="grid grid-cols-[84px_1fr] gap-4">
-      <div className="relative aspect-square overflow-hidden rounded-md bg-zinc-100">
+    <article className="grid grid-cols-[84px_1fr] gap-4">
+      <Link
+        href={`/posts/${post.id}`}
+        className="relative aspect-square overflow-hidden rounded-md bg-zinc-100"
+      >
         <Image
           src={post.coverImage}
           alt={`${post.title}の表紙画像`}
@@ -97,17 +109,32 @@ function MyPostCard({ post }: { post: MyPost }) {
           sizes="84px"
           className="object-cover"
         />
-      </div>
+      </Link>
       <div className="min-w-0 py-1">
-        <p className="line-clamp-2 text-[15px] font-semibold leading-6">
-          {post.title}
-        </p>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-zinc-500">
-          <span>{getTypeLabel(post.type)}</span>
-          {formatDate(post.createdAt) ? <span>{formatDate(post.createdAt)}</span> : null}
+        <Link href={`/posts/${post.id}`} className="block">
+          <p className="line-clamp-2 text-[15px] font-semibold leading-6">
+            {post.title}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-zinc-500">
+            <span>{getTypeLabel(post.type)}</span>
+            {formatDate(post.createdAt) ? <span>{formatDate(post.createdAt)}</span> : null}
+          </div>
+        </Link>
+        <div className="mt-2 flex items-center gap-3 text-sm font-semibold">
+          <Link href={`/bookmarks/${post.id}/edit`} className="text-zinc-950">
+            編集
+          </Link>
+          <button
+            type="button"
+            onClick={() => onDelete(post.id)}
+            disabled={isDeleting}
+            className="text-red-600 disabled:cursor-not-allowed disabled:text-zinc-400"
+          >
+            {isDeleting ? "削除中..." : "削除"}
+          </button>
         </div>
       </div>
-    </Link>
+    </article>
   );
 }
 
@@ -141,8 +168,11 @@ function SavedPostCard({ post }: { post: SavedPost }) {
 }
 
 export default function MyPage() {
+  const router = useRouter();
   const [myPosts, setMyPosts] = useState<MyPost[]>([]);
   const [savedPostList, setSavedPostList] = useState<SavedPost[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -160,7 +190,6 @@ export default function MyPage() {
           .from("posts")
           .select("id,user_id,title,cover_image_url,type,created_at")
           .eq("user_id", userId)
-          .eq("is_published", true)
           .order("created_at", { ascending: false });
 
         if (error) {
@@ -245,6 +274,7 @@ export default function MyPage() {
         });
 
         if (isMounted) {
+          setUserId(userId);
           setMyPosts(nextPosts);
           setSavedPostList(nextSavedPosts);
         }
@@ -268,6 +298,54 @@ export default function MyPage() {
       isMounted = false;
     };
   }, []);
+
+  async function handleDeletePost(postId: string) {
+    if (!userId) {
+      setErrorMessage("ログイン中のユーザーを取得できませんでした。");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "この投稿を削除しますか？この操作は取り消せません。",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingPostId(postId);
+    setErrorMessage(null);
+
+    try {
+      const { data, error } = await supabase
+        .from("posts")
+        .delete()
+        .eq("id", postId)
+        .eq("user_id", userId)
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.id) {
+        throw new Error("この投稿を削除する権限がありません。");
+      }
+
+      console.log("ROUTY my page delete post success", { postId });
+      setMyPosts((posts) => posts.filter((post) => post.id !== postId));
+      setSavedPostList((posts) => posts.filter((post) => post.id !== postId));
+      router.push("/mypage");
+    } catch (error) {
+      console.error("ROUTY my page delete post failed", error);
+      setErrorMessage(
+        getReadableSupabaseError(error, "投稿の削除に失敗しました。"),
+      );
+    } finally {
+      setDeletingPostId(null);
+    }
+  }
 
   return (
     <AppShell>
@@ -304,7 +382,12 @@ export default function MyPage() {
           ) : (
             <div className="space-y-5">
               {myPosts.map((post) => (
-                <MyPostCard key={post.id} post={post} />
+                <MyPostCard
+                  key={post.id}
+                  post={post}
+                  isDeleting={deletingPostId === post.id}
+                  onDelete={handleDeletePost}
+                />
               ))}
             </div>
           )}
