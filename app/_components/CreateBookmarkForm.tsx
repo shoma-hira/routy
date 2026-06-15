@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -21,7 +22,6 @@ export type ScheduleContent = {
   comment: string;
   stayDuration?: string;
   imageUrl?: string;
-  attachmentName?: string;
 };
 
 export type BookmarkFormValue = {
@@ -36,11 +36,16 @@ export type BookmarkFormValue = {
 type DraftEvent = {
   index: number | null;
   item: ScheduleContent;
-  imagePreviewUrl?: string;
 };
 type DragSelection = {
   startMinutes: number;
   endMinutes: number;
+};
+type DatePickerPosition = {
+  top: number;
+  right: number;
+  width: number;
+  maxHeight: number;
 };
 
 const timelineStart = 0;
@@ -51,6 +56,9 @@ const pixelsPerMinute = pixelsPerHour / 60;
 const minBlockHeight = 28;
 const longPressMs = 380;
 const moveCancelThreshold = 10;
+const postImageBucket = process.env.NEXT_PUBLIC_SUPABASE_POST_IMAGE_BUCKET || "post-images";
+const calendarMargin = 12;
+const calendarMaxWidth = 320;
 
 const timeOptions = Array.from(
   { length: timelineEnd / stepMinutes + 1 },
@@ -67,7 +75,6 @@ function emptyContent(): ScheduleContent {
     comment: "",
     stayDuration: "",
     imageUrl: "",
-    attachmentName: "",
   };
 }
 
@@ -219,6 +226,51 @@ function dateInputValue(value?: string) {
   return new Date().toISOString().slice(0, 10);
 }
 
+function parseDateInput(value: string) {
+  const [yearText, monthText, dayText] = value.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return new Date();
+  }
+
+  return new Date(year, month - 1, day);
+}
+
+function formatDateInputValue(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function getCalendarDates(monthDate: Date) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const gridStart = new Date(year, month, 1 - firstDay.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+    return date;
+  });
+}
+
+function getSafeFileName(fileName: string) {
+  const fallback = "thumbnail";
+  const sanitized = fileName
+    .normalize("NFKC")
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return sanitized || fallback;
+}
+
 function itemHasContent(item: ScheduleContent) {
   return Boolean(
     item.contentName.trim() ||
@@ -244,9 +296,14 @@ export function CreateBookmarkForm({
   const router = useRouter();
   const isEdit = mode === "edit";
   const [title, setTitle] = useState(initialValue?.title ?? "");
-  const [coverImageUrl] = useState(
+  const [coverImageUrl, setCoverImageUrl] = useState(
     initialValue?.coverImageUrl ?? "",
   );
+  const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState(
+    initialValue?.coverImageUrl ?? "",
+  );
+  const [selectedThumbnailFile, setSelectedThumbnailFile] = useState<File | null>(null);
+  const [thumbnailFileName, setThumbnailFileName] = useState("");
   const [postType] = useState(initialValue?.type ?? "plan");
   const [isPublished] = useState(
     initialValue?.isPublished ?? true,
@@ -271,8 +328,17 @@ export function CreateBookmarkForm({
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() =>
+    parseDateInput(selectedDate),
+  );
+  const [datePickerPosition, setDatePickerPosition] =
+    useState<DatePickerPosition | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const dateInputRef = useRef<HTMLInputElement>(null);
+  const dateButtonRef = useRef<HTMLButtonElement>(null);
+  const datePickerRef = useRef<HTMLDivElement>(null);
+  const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const thumbnailObjectUrlRef = useRef<string | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragSessionRef = useRef<{
     pointerId: number;
@@ -312,14 +378,6 @@ export function CreateBookmarkForm({
 
   useEffect(() => {
     return () => {
-      if (draftEvent?.imagePreviewUrl) {
-        URL.revokeObjectURL(draftEvent.imagePreviewUrl);
-      }
-    };
-  }, [draftEvent?.imagePreviewUrl]);
-
-  useEffect(() => {
-    return () => {
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
       }
@@ -328,8 +386,73 @@ export function CreateBookmarkForm({
       if (session?.target.hasPointerCapture(session.pointerId)) {
         session.target.releasePointerCapture(session.pointerId);
       }
+
+      if (thumbnailObjectUrlRef.current) {
+        URL.revokeObjectURL(thumbnailObjectUrlRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!isDatePickerOpen) return;
+
+    function updateDatePickerPosition() {
+      const button = dateButtonRef.current;
+      if (!button) return;
+
+      const rect = button.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const width = Math.min(calendarMaxWidth, viewportWidth - calendarMargin * 2);
+      let right = Math.max(calendarMargin, viewportWidth - rect.right);
+
+      if (viewportWidth - right - width < calendarMargin) {
+        right = Math.max(calendarMargin, viewportWidth - calendarMargin - width);
+      }
+
+      let top = Math.max(calendarMargin, rect.bottom + 8);
+      let maxHeight = viewportHeight - top - calendarMargin;
+
+      if (maxHeight < 260) {
+        top = calendarMargin;
+        maxHeight = viewportHeight - calendarMargin * 2;
+      }
+
+      setDatePickerPosition({ top, right, width, maxHeight });
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+
+      if (
+        datePickerRef.current?.contains(target) ||
+        dateButtonRef.current?.contains(target)
+      ) {
+        return;
+      }
+
+      setIsDatePickerOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsDatePickerOpen(false);
+      }
+    }
+
+    updateDatePickerPosition();
+    window.addEventListener("resize", updateDatePickerPosition);
+    window.addEventListener("scroll", updateDatePickerPosition, true);
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("resize", updateDatePickerPosition);
+      window.removeEventListener("scroll", updateDatePickerPosition, true);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isDatePickerOpen]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -534,9 +657,6 @@ export function CreateBookmarkForm({
   }
 
   function closeDraft() {
-    if (draftEvent?.imagePreviewUrl) {
-      URL.revokeObjectURL(draftEvent.imagePreviewUrl);
-    }
     setDraftEvent(null);
     setFieldError(null);
   }
@@ -558,30 +678,6 @@ export function CreateBookmarkForm({
       nextItem.stayDuration = `${getDurationMinutes(nextItem)}分`;
 
       return { ...current, item: nextItem };
-    });
-  }
-
-  function handleDraftFile(file: File | null) {
-    setDraftEvent((current) => {
-      if (!current) return current;
-      if (current.imagePreviewUrl) URL.revokeObjectURL(current.imagePreviewUrl);
-      if (!file) {
-        return {
-          ...current,
-          imagePreviewUrl: undefined,
-          item: { ...current.item, attachmentName: "", imageUrl: "" },
-        };
-      }
-
-      return {
-        ...current,
-        imagePreviewUrl: URL.createObjectURL(file),
-        item: {
-          ...current.item,
-          attachmentName: file.name,
-          imageUrl: current.item.imageUrl || "",
-        },
-      };
     });
   }
 
@@ -637,6 +733,44 @@ export function CreateBookmarkForm({
     closeDraft();
   }
 
+  async function uploadThumbnailImage(userId: string, targetPostId: string) {
+    if (!selectedThumbnailFile) {
+      return coverImageUrl.trim() || null;
+    }
+
+    if (!selectedThumbnailFile.type.startsWith("image/")) {
+      throw new Error("画像ファイルを選択してください。");
+    }
+
+    const fileId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : String(Date.now());
+    const path = `${userId}/${targetPostId}/${fileId}-${getSafeFileName(
+      selectedThumbnailFile.name,
+    )}`;
+    const { error: uploadError } = await supabase.storage
+      .from(postImageBucket)
+      .upload(path, selectedThumbnailFile, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error(`サムネイル画像のアップロードに失敗しました。${uploadError.message}`);
+    }
+
+    const { data } = supabase.storage.from(postImageBucket).getPublicUrl(path);
+    const publicUrl = data.publicUrl?.trim();
+
+    if (!publicUrl) {
+      throw new Error("サムネイル画像の公開URLを取得できませんでした。");
+    }
+
+    setCoverImageUrl(publicUrl);
+    return publicUrl;
+  }
+
   async function handleSubmit() {
     console.log(isEdit ? "ROUTY update post" : "ROUTY create post", postValue);
 
@@ -687,11 +821,13 @@ export function CreateBookmarkForm({
           throw new Error("この投稿を編集する権限がありません。");
         }
 
+        const nextCoverImageUrl = await uploadThumbnailImage(user.id, postId);
+
         const { data: updatedPost, error: updateError } = await supabase
           .from("posts")
           .update({
             title: trimmedTitle,
-            cover_image_url: coverImageUrl.trim() || null,
+            cover_image_url: nextCoverImageUrl,
             type: postType || "plan",
             is_published: isPublished,
           })
@@ -730,12 +866,21 @@ export function CreateBookmarkForm({
         return;
       }
 
+      const draftPostImageId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : String(Date.now());
+      const nextCoverImageUrl = await uploadThumbnailImage(
+        user.id,
+        `draft-${draftPostImageId}`,
+      );
+
       const { data: post, error: postError } = await supabase
         .from("posts")
         .insert({
           user_id: user.id,
           title: trimmedTitle,
-          cover_image_url: coverImageUrl.trim() || null,
+          cover_image_url: nextCoverImageUrl,
           type: "plan",
           is_published: true,
         })
@@ -771,16 +916,65 @@ export function CreateBookmarkForm({
   }
 
   function openDatePicker() {
-    const input = dateInputRef.current;
-    if (!input) return;
-    const dateInput = input as HTMLInputElement & { showPicker?: () => void };
+    setCalendarMonth(parseDateInput(selectedDate));
+    setIsDatePickerOpen((current) => !current);
+  }
 
-    if (dateInput.showPicker) {
-      dateInput.showPicker();
+  function selectDate(date: Date) {
+    setSelectedDate(formatDateInputValue(date));
+    setIsDatePickerOpen(false);
+  }
+
+  function moveCalendarMonth(offset: number) {
+    setCalendarMonth((current) => {
+      const nextMonth = new Date(current);
+      nextMonth.setMonth(current.getMonth() + offset, 1);
+      return nextMonth;
+    });
+  }
+
+  function openThumbnailPicker() {
+    thumbnailInputRef.current?.click();
+  }
+
+  function handleThumbnailChange(file: File | null) {
+    if (thumbnailObjectUrlRef.current) {
+      URL.revokeObjectURL(thumbnailObjectUrlRef.current);
+      thumbnailObjectUrlRef.current = null;
+    }
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setSelectedThumbnailFile(null);
+      setThumbnailPreviewUrl(coverImageUrl);
+      setThumbnailFileName("");
+      setSubmitError("画像ファイルを選択してください。");
       return;
     }
 
-    dateInput.click();
+    const previewUrl = URL.createObjectURL(file);
+    thumbnailObjectUrlRef.current = previewUrl;
+    setSelectedThumbnailFile(file);
+    setThumbnailPreviewUrl(previewUrl);
+    setThumbnailFileName(file.name);
+    setSubmitError(null);
+  }
+
+  function removeThumbnail() {
+    if (thumbnailObjectUrlRef.current) {
+      URL.revokeObjectURL(thumbnailObjectUrlRef.current);
+      thumbnailObjectUrlRef.current = null;
+    }
+
+    setCoverImageUrl("");
+    setSelectedThumbnailFile(null);
+    setThumbnailPreviewUrl("");
+    setThumbnailFileName("");
+
+    if (thumbnailInputRef.current) {
+      thumbnailInputRef.current.value = "";
+    }
   }
 
   return (
@@ -811,20 +1005,14 @@ export function CreateBookmarkForm({
             className="h-11 min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-base font-medium outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
           />
           <div className="relative flex shrink-0 items-center gap-1.5">
-            <input
-              ref={dateInputRef}
-              type="date"
-              value={selectedDate}
-              onChange={(event) => setSelectedDate(event.target.value)}
-              className="absolute right-0 top-0 h-px w-px opacity-0"
-              tabIndex={-1}
-            />
             <span className="hidden text-xs font-semibold tabular-nums text-zinc-500 min-[380px]:inline">
               {selectedDate.slice(5).replace("-", "/")}
             </span>
             <button
+              ref={dateButtonRef}
               type="button"
               onClick={openDatePicker}
+              aria-expanded={isDatePickerOpen}
               aria-label="日付を選択"
               className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-800 shadow-sm active:bg-zinc-50"
             >
@@ -847,12 +1035,73 @@ export function CreateBookmarkForm({
           </div>
         </div>
 
+        <p className="mt-1.5 text-xs leading-5 text-zinc-400">
+          開始時間を長押しし、そのまま下にドラッグして時間を設定
+        </p>
+
+        <div className="mt-2 flex min-w-0 items-center gap-2">
+          <input
+            ref={thumbnailInputRef}
+            type="file"
+            accept="image/*"
+            onChange={(event) => {
+              handleThumbnailChange(event.target.files?.[0] ?? null);
+              event.target.value = "";
+            }}
+            className="sr-only"
+          />
+          <button
+            type="button"
+            onClick={openThumbnailPicker}
+            className="h-9 shrink-0 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 shadow-sm active:bg-zinc-50"
+          >
+            {thumbnailPreviewUrl ? "サムネイル画像を変更" : "サムネイル画像を追加"}
+          </button>
+          {thumbnailPreviewUrl ? (
+            <>
+              <div className="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-zinc-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={thumbnailPreviewUrl}
+                  alt="サムネイル画像プレビュー"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
+                {thumbnailFileName || "設定済み"}
+              </span>
+              <button
+                type="button"
+                onClick={removeThumbnail}
+                className="h-9 shrink-0 rounded-lg bg-zinc-100 px-3 text-xs font-semibold text-zinc-600 active:bg-zinc-200"
+              >
+                削除
+              </button>
+            </>
+          ) : null}
+        </div>
+
         {submitError ? (
           <p className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
             {submitError}
           </p>
         ) : null}
       </section>
+
+      {isDatePickerOpen && datePickerPosition
+        ? createPortal(
+            <DatePickerPopover
+              refElement={datePickerRef}
+              month={calendarMonth}
+              selectedDate={selectedDate}
+              position={datePickerPosition}
+              onPreviousMonth={() => moveCalendarMonth(-1)}
+              onNextMonth={() => moveCalendarMonth(1)}
+              onSelectDate={selectDate}
+            />,
+            document.body,
+          )
+        : null}
 
       <section className="min-h-0 flex-1 bg-zinc-50 px-3 py-2">
         <div className="relative h-full min-h-0">
@@ -904,7 +1153,6 @@ export function CreateBookmarkForm({
           draft={draftEvent}
           fieldError={fieldError}
           onChange={updateDraft}
-          onFileChange={handleDraftFile}
           onCancel={closeDraft}
           onSave={saveDraftEvent}
           onRemove={draftEvent.index === null ? undefined : removeDraftEvent}
@@ -1003,11 +1251,102 @@ function SelectionBlock({ selection }: { selection: DragSelection }) {
   );
 }
 
+function DatePickerPopover({
+  refElement,
+  month,
+  selectedDate,
+  position,
+  onPreviousMonth,
+  onNextMonth,
+  onSelectDate,
+}: {
+  refElement: { current: HTMLDivElement | null };
+  month: Date;
+  selectedDate: string;
+  position: DatePickerPosition;
+  onPreviousMonth: () => void;
+  onNextMonth: () => void;
+  onSelectDate: (date: Date) => void;
+}) {
+  const dates = getCalendarDates(month);
+  const todayValue = formatDateInputValue(new Date());
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+
+  return (
+    <div
+      ref={refElement}
+      className="fixed rounded-xl border border-zinc-200 bg-white p-3 shadow-2xl"
+      style={{
+        top: position.top,
+        right: position.right,
+        width: position.width,
+        maxHeight: position.maxHeight,
+        overflowY: "auto",
+        zIndex: 1000,
+      }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={onPreviousMonth}
+          aria-label="前の月"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 active:bg-zinc-50"
+        >
+          <span aria-hidden="true">‹</span>
+        </button>
+        <p className="text-sm font-semibold tabular-nums text-zinc-950">
+          {month.getFullYear()}年{month.getMonth() + 1}月
+        </p>
+        <button
+          type="button"
+          onClick={onNextMonth}
+          aria-label="次の月"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 active:bg-zinc-50"
+        >
+          <span aria-hidden="true">›</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {weekdays.map((weekday) => (
+          <div key={weekday} className="py-1 text-[11px] font-semibold text-zinc-400">
+            {weekday}
+          </div>
+        ))}
+        {dates.map((date) => {
+          const value = formatDateInputValue(date);
+          const isSelected = value === selectedDate;
+          const isToday = value === todayValue;
+          const isCurrentMonth = date.getMonth() === month.getMonth();
+
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onSelectDate(date)}
+              className={`flex h-9 items-center justify-center rounded-lg text-sm font-semibold tabular-nums ${
+                isSelected
+                  ? "bg-zinc-950 text-white"
+                  : isToday
+                    ? "bg-teal-50 text-teal-700 ring-1 ring-teal-200"
+                    : isCurrentMonth
+                      ? "text-zinc-800 active:bg-zinc-100"
+                      : "text-zinc-300 active:bg-zinc-50"
+              }`}
+            >
+              {date.getDate()}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function EventSheet({
   draft,
   fieldError,
   onChange,
-  onFileChange,
   onCancel,
   onSave,
   onRemove,
@@ -1015,14 +1354,12 @@ function EventSheet({
   draft: DraftEvent;
   fieldError: string | null;
   onChange: (field: keyof ScheduleContent, value: string) => void;
-  onFileChange: (file: File | null) => void;
   onCancel: () => void;
   onSave: () => void;
   onRemove?: () => void;
 }) {
   const startMinutes = toMinutes(draft.item.startTime) ?? timelineStart;
   const duration = getDurationMinutes(draft.item);
-  const imageSrc = draft.imagePreviewUrl || draft.item.imageUrl?.trim();
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/35 px-0">
@@ -1051,7 +1388,7 @@ function EventSheet({
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-xs font-semibold text-zinc-600">髢句ｧ区凾蛻ｻ</span>
+              <span className="text-xs font-semibold text-zinc-600">開始時刻</span>
               <select
                 value={draft.item.startTime}
                 onChange={(event) => onChange("startTime", event.target.value)}
@@ -1065,7 +1402,7 @@ function EventSheet({
               </select>
             </label>
             <label className="block">
-              <span className="text-xs font-semibold text-zinc-600">邨ゆｺ・凾蛻ｻ</span>
+              <span className="text-xs font-semibold text-zinc-600">終了時刻</span>
               <select
                 value={draft.item.endTime}
                 onChange={(event) => onChange("endTime", event.target.value)}
@@ -1098,50 +1435,6 @@ function EventSheet({
               </span>
             ) : null}
           </label>
-
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">添付ファイル</span>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
-              className="mt-1.5 block w-full text-sm text-zinc-700 file:mr-3 file:h-10 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:text-sm file:font-semibold file:text-white"
-            />
-            <span className="mt-1.5 block text-xs leading-5 text-zinc-500">
-              画像アップロードの保存先は未実装です。既存の画像URLがある場合のみDBへ保存します。
-            </span>
-          </label>
-
-          {imageSrc ? (
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={imageSrc}
-                alt="添付画像プレビュー"
-                className="max-h-52 w-full rounded-md object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => onFileChange(null)}
-                className="mt-2 h-9 rounded-lg bg-white px-3 text-sm font-semibold text-zinc-700 ring-1 ring-zinc-200"
-              >
-                画像を削除
-              </button>
-            </div>
-          ) : draft.item.attachmentName ? (
-            <div className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2">
-              <span className="truncate text-sm font-medium text-zinc-700">
-                {draft.item.attachmentName}
-              </span>
-              <button
-                type="button"
-                onClick={() => onFileChange(null)}
-                className="text-sm font-semibold text-zinc-500"
-              >
-                削除
-              </button>
-            </div>
-          ) : null}
 
           <label className="block">
             <span className="text-xs font-semibold text-zinc-600">コメント</span>

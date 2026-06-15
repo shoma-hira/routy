@@ -15,14 +15,13 @@ import {
 } from "@/lib/savedPosts";
 
 const fallbackCoverImage = mockPosts[0]?.coverImage ?? "/globe.svg";
-const slideCount = 3;
+const slideCount = 2;
 
 type PostRow = {
   id: string;
   user_id: string;
   title: string;
   cover_image_url: string | null;
-  type: string | null;
   is_published: boolean;
   created_at: string;
 };
@@ -52,10 +51,6 @@ type DetailState = {
 
 function getErrorMessage(error: unknown) {
   return getReadableSupabaseError(error, "投稿詳細の取得に失敗しました。");
-}
-
-function getTypeLabel(type: string | null) {
-  return type === "actual" ? "実績" : "予定";
 }
 
 function getAuthorName(profile: ProfileRow | null) {
@@ -107,7 +102,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
         const currentUserId = await getCurrentUserId();
         const { data: post, error: postError } = await supabase
           .from("posts")
-          .select("id,user_id,title,cover_image_url,type,is_published,created_at")
+          .select("id,user_id,title,cover_image_url,is_published,created_at")
           .eq("id", postId)
           .maybeSingle();
 
@@ -143,6 +138,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
               "id,post_id,sort_order,time,spot_name,stay_duration,comment,image_url",
             )
             .eq("post_id", post.id)
+            .order("time", { ascending: true })
             .order("sort_order", { ascending: true }),
         ]);
 
@@ -354,16 +350,10 @@ export function PostDetailClient({ postId }: { postId: string }) {
             >
               <CoverSlide detail={detail} />
               <ScheduleSlide
-                title="予定スケジュール"
-                page="2/3"
+                title="タイムライン"
+                page="2/2"
                 items={detail.scheduleItems}
-                emptyMessage="予定スケジュールはまだありません"
-              />
-              <ScheduleSlide
-                title="実績スケジュール"
-                page="3/3"
-                items={[]}
-                emptyMessage="実績スケジュールはまだありません"
+                emptyMessage="スケジュールが登録されていません"
               />
             </div>
 
@@ -423,14 +413,11 @@ function CoverSlide({ detail }: { detail: DetailState }) {
       <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/5 to-black/65" />
       <div className="absolute right-4 top-4">
         <span className="rounded-full bg-black/45 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur">
-          1/3
+          1/2
         </span>
       </div>
       <div className="absolute bottom-5 left-4 right-4">
         <div className="mb-3 flex items-center gap-2">
-          <span className="rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-zinc-950">
-            {getTypeLabel(detail.post.type)}
-          </span>
           <span className="text-xs font-semibold text-white drop-shadow">
             {getAuthorName(detail.profile)}
           </span>
