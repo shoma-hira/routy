@@ -3,7 +3,7 @@ import { CreateBookmarkForm } from "../../_components/CreateBookmarkForm";
 
 export default function NewBookmarkPage() {
   return (
-    <AppShell>
+    <AppShell reserveBottomNavSpace={false}>
       <CreateBookmarkForm />
     </AppShell>
   );

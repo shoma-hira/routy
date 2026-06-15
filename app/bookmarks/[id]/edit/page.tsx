@@ -7,7 +7,7 @@ export default async function EditBookmarkPage(
   const { id } = await props.params;
 
   return (
-    <AppShell>
+    <AppShell reserveBottomNavSpace={false}>
       <EditBookmarkClient postId={id} />
     </AppShell>
   );
