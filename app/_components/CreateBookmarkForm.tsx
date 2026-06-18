@@ -1127,15 +1127,21 @@ export function CreateBookmarkForm({
     console.log(isEdit ? "ROUTY update post" : "ROUTY create post", postValue);
 
     const trimmedTitle = title.trim();
+    const trimmedArea = area.trim();
+    const trimmedBudget = budget.trim();
+    const normalizedBudget = trimmedBudget ? Number(trimmedBudget) : null;
+    const trimmedCaption = caption.trim();
     const scheduleToSave = schedule.filter(itemHasContent);
+    const metadataValidationMessage = validatePostMetadata({
+      title,
+      routeDate: selectedDate,
+      area,
+      transportType,
+      budget,
+    });
 
-    if (!trimmedTitle) {
-      setSubmitError("タイトルを入力してください。");
-      return;
-    }
-
-    if (scheduleToSave.length === 0) {
-      setSubmitError("スケジュールを1件以上追加してください。");
+    if (metadataValidationMessage) {
+      setSubmitError(metadataValidationMessage);
       return;
     }
 
@@ -1179,6 +1185,13 @@ export function CreateBookmarkForm({
           .from("posts")
           .update({
             title: trimmedTitle,
+            route_date: selectedDate,
+            area: trimmedArea,
+            transport_type: transportType,
+            companion_type: companionType || null,
+            budget: normalizedBudget,
+            weather_type: weatherType || null,
+            caption: trimmedCaption || null,
             cover_image_url: nextCoverImageUrl,
             type: postType || "plan",
             is_published: isPublished,
@@ -1226,6 +1239,13 @@ export function CreateBookmarkForm({
         .insert({
           user_id: user.id,
           title: trimmedTitle,
+          route_date: selectedDate,
+          area: trimmedArea,
+          transport_type: transportType,
+          companion_type: companionType || null,
+          budget: normalizedBudget,
+          weather_type: weatherType || null,
+          caption: trimmedCaption || null,
           cover_image_url: nextCoverImageUrl,
           type: "plan",
           is_published: true,
