@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
   type UIEvent as ReactUIEvent,
   useEffect,
   useMemo,
@@ -90,6 +91,7 @@ type DatePickerPosition = {
   width: number;
   maxHeight: number;
 };
+type CreateBookmarkStep = "schedule" | "metadata";
 type ScheduleItemRow = {
   post_id: string;
   sort_order: number;
@@ -447,6 +449,40 @@ function allowsMissingPlaceName(item: ScheduleContent) {
   return Boolean(item.isLegacyPlaceNameMissing && !item.isTouched);
 }
 
+function validateScheduleItemsForStep(items: ScheduleContent[]) {
+  const scheduleToValidate = items.filter(itemHasContent);
+
+  if (scheduleToValidate.length === 0) {
+    return "スケジュールを1件以上追加してください。";
+  }
+
+  const invalidContentItem = scheduleToValidate.find(
+    (item) => !item.contentName.trim(),
+  );
+  if (invalidContentItem) {
+    return "コンテンツ名が未入力の項目があります。項目を開いて入力してください。";
+  }
+
+  const invalidPlaceItem = scheduleToValidate.find(
+    (item) => !item.placeName?.trim() && !allowsMissingPlaceName(item),
+  );
+  if (invalidPlaceItem) {
+    return "場所名が未入力の項目があります。項目を開いて入力してください。";
+  }
+
+  const invalidTimeItem = scheduleToValidate.find(
+    (item) =>
+      !hasValidScheduleTimeRange(item) ||
+      !isFiveMinuteTime(item.startTime) ||
+      !isFiveMinuteTime(item.endTime),
+  );
+  if (invalidTimeItem) {
+    return "開始時刻と終了時刻は00:00〜26:00の5分刻みで、終了時刻が開始時刻より後になるようにしてください。";
+  }
+
+  return null;
+}
+
 export function CreateBookmarkForm({
   mode = "create",
   postId,
@@ -460,6 +496,8 @@ export function CreateBookmarkForm({
 }) {
   const router = useRouter();
   const isEdit = mode === "edit";
+  const [currentStep, setCurrentStep] =
+    useState<CreateBookmarkStep>("schedule");
   const [title, setTitle] = useState(initialValue?.title ?? "");
   const [coverImageUrl, setCoverImageUrl] = useState(
     initialValue?.coverImageUrl ?? "",
@@ -972,28 +1010,9 @@ export function CreateBookmarkForm({
       return;
     }
 
-    const invalidItem = scheduleToSave.find((item) => !item.contentName.trim());
-    if (invalidItem) {
-      setSubmitError("コンテンツ名が未入力の項目があります。項目を開いて入力してください。");
-      return;
-    }
-
-    const invalidPlaceItem = scheduleToSave.find(
-      (item) => !item.placeName?.trim() && !allowsMissingPlaceName(item),
-    );
-    if (invalidPlaceItem) {
-      setSubmitError("場所名が未入力の項目があります。項目を開いて入力してください。");
-      return;
-    }
-
-    const invalidTimeItem = scheduleToSave.find(
-      (item) =>
-        !hasValidScheduleTimeRange(item) ||
-        !isFiveMinuteTime(item.startTime) ||
-        !isFiveMinuteTime(item.endTime),
-    );
-    if (invalidTimeItem) {
-      setSubmitError("開始時刻と終了時刻は00:00〜26:00の5分刻みで、終了時刻が開始時刻より後になるようにしてください。");
+    const scheduleValidationMessage = validateScheduleItemsForStep(schedule);
+    if (scheduleValidationMessage) {
+      setSubmitError(scheduleValidationMessage);
       return;
     }
 
@@ -1107,6 +1126,23 @@ export function CreateBookmarkForm({
     }
   }
 
+  function handleNextStep() {
+    const validationMessage = validateScheduleItemsForStep(schedule);
+
+    if (validationMessage) {
+      setSubmitError(validationMessage);
+      return;
+    }
+
+    setSubmitError(null);
+    setCurrentStep("metadata");
+  }
+
+  function handleBackToScheduleStep() {
+    setSubmitError(null);
+    setCurrentStep("schedule");
+  }
+
   function openDatePicker() {
     setCalendarMonth(parseDateInput(selectedDate));
     setIsDatePickerOpen((current) => !current);
@@ -1178,109 +1214,104 @@ export function CreateBookmarkForm({
         <h1 className="text-base font-semibold text-zinc-950">
           {isEdit ? "しおり編集" : "しおり作成"}
         </h1>
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={isSubmitting}
-          className="text-sm font-semibold text-zinc-950 disabled:text-zinc-400"
-        >
-          {isSubmitting ? "保存中..." : "保存"}
-        </button>
+        <span className="w-14" aria-hidden="true" />
       </header>
 
-      <section className="shrink-0 border-b border-zinc-100 bg-white px-3 py-2">
-        <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-          <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="タイトルを入力"
-            className="h-11 min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-base font-medium outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
-          />
-          <div className="relative flex shrink-0 items-center gap-1.5">
-            <span className="hidden text-xs font-semibold tabular-nums text-zinc-500 min-[380px]:inline">
-              {selectedDate.slice(5).replace("-", "/")}
-            </span>
-            <button
-              ref={dateButtonRef}
-              type="button"
-              onClick={openDatePicker}
-              aria-expanded={isDatePickerOpen}
-              aria-label="日付を選択"
-              className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-800 shadow-sm active:bg-zinc-50"
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-              >
-                <path d="M8 2v4" />
-                <path d="M16 2v4" />
-                <rect width="18" height="18" x="3" y="4" rx="2" />
-                <path d="M3 10h18" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <p className="mt-1.5 text-xs leading-5 text-zinc-400">
-          開始時間を長押しし、そのまま下にドラッグして時間を設定
-        </p>
-
-        <div className="mt-2 flex min-w-0 items-center gap-2">
-          <input
-            ref={thumbnailInputRef}
-            type="file"
-            accept="image/*"
-            onChange={(event) => {
-              handleThumbnailChange(event.target.files?.[0] ?? null);
-              event.target.value = "";
-            }}
-            className="sr-only"
-          />
-          <button
-            type="button"
-            onClick={openThumbnailPicker}
-            className="h-9 shrink-0 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 shadow-sm active:bg-zinc-50"
-          >
-            {thumbnailPreviewUrl ? "サムネイル画像を変更" : "サムネイル画像を追加"}
-          </button>
-          {thumbnailPreviewUrl ? (
-            <>
-              <div className="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-zinc-100">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={thumbnailPreviewUrl}
-                  alt="サムネイル画像プレビュー"
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
-                {thumbnailFileName || "設定済み"}
+      {currentStep === "schedule" ? (
+        <section className="shrink-0 border-b border-zinc-100 bg-white px-3 py-2">
+          <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="タイトルを入力"
+              className="h-11 min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-base font-medium outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+            />
+            <div className="relative flex shrink-0 items-center gap-1.5">
+              <span className="hidden text-xs font-semibold tabular-nums text-zinc-500 min-[380px]:inline">
+                {selectedDate.slice(5).replace("-", "/")}
               </span>
               <button
+                ref={dateButtonRef}
                 type="button"
-                onClick={removeThumbnail}
-                className="h-9 shrink-0 rounded-lg bg-zinc-100 px-3 text-xs font-semibold text-zinc-600 active:bg-zinc-200"
+                onClick={openDatePicker}
+                aria-expanded={isDatePickerOpen}
+                aria-label="日付を選択"
+                className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-800 shadow-sm active:bg-zinc-50"
               >
-                削除
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                >
+                  <path d="M8 2v4" />
+                  <path d="M16 2v4" />
+                  <rect width="18" height="18" x="3" y="4" rx="2" />
+                  <path d="M3 10h18" />
+                </svg>
               </button>
-            </>
-          ) : null}
-        </div>
+            </div>
+          </div>
 
-        {submitError ? (
-          <p className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
-            {submitError}
+          <p className="mt-1.5 text-xs leading-5 text-zinc-400">
+            開始時間を長押しし、そのまま下にドラッグして時間を設定
           </p>
-        ) : null}
-      </section>
 
-      {isDatePickerOpen && datePickerPosition
+          <div className="mt-2 flex min-w-0 items-center gap-2">
+            <input
+              ref={thumbnailInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                handleThumbnailChange(event.target.files?.[0] ?? null);
+                event.target.value = "";
+              }}
+              className="sr-only"
+            />
+            <button
+              type="button"
+              onClick={openThumbnailPicker}
+              className="h-9 shrink-0 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 shadow-sm active:bg-zinc-50"
+            >
+              {thumbnailPreviewUrl ? "サムネイル画像を変更" : "サムネイル画像を追加"}
+            </button>
+            {thumbnailPreviewUrl ? (
+              <>
+                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-zinc-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={thumbnailPreviewUrl}
+                    alt="サムネイル画像プレビュー"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
+                  {thumbnailFileName || "設定済み"}
+                </span>
+                <button
+                  type="button"
+                  onClick={removeThumbnail}
+                  className="h-9 shrink-0 rounded-lg bg-zinc-100 px-3 text-xs font-semibold text-zinc-600 active:bg-zinc-200"
+                >
+                  削除
+                </button>
+              </>
+            ) : null}
+          </div>
+
+          {submitError ? (
+            <p className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
+              {submitError}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {currentStep === "schedule" && isDatePickerOpen && datePickerPosition
         ? createPortal(
             <DatePickerPopover
               refElement={datePickerRef}
@@ -1295,6 +1326,73 @@ export function CreateBookmarkForm({
           )
         : null}
 
+      {currentStep === "schedule" ? (
+        <ScheduleEditorStep
+          scrollerRef={scrollerRef}
+          isCreatingSchedule={isCreatingSchedule}
+          isLongPressPending={isLongPressPending}
+          sortedSchedule={sortedSchedule}
+          dragSelection={dragSelection}
+          onPointerDown={handleTimelinePointerDown}
+          onPointerMove={handleTimelinePointerMove}
+          onPointerUp={handleTimelinePointerUp}
+          onPointerCancel={handleTimelinePointerCancel}
+          onScroll={handleTimelineScroll}
+          onOpenExistingEvent={openExistingEvent}
+          onNext={handleNextStep}
+        />
+      ) : (
+        <PostMetadataStep
+          isEdit={isEdit}
+          isSubmitting={isSubmitting}
+          submitError={submitError}
+          onBack={handleBackToScheduleStep}
+          onSubmit={handleSubmit}
+        />
+      )}
+      {currentStep === "schedule" && draftEvent ? (
+        <EventSheet
+          draft={draftEvent}
+          fieldError={fieldError}
+          onChange={updateDraft}
+          onCancel={closeDraft}
+          onSave={saveDraftEvent}
+          onRemove={draftEvent.index === null ? undefined : removeDraftEvent}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ScheduleEditorStep({
+  scrollerRef,
+  isCreatingSchedule,
+  isLongPressPending,
+  sortedSchedule,
+  dragSelection,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  onScroll,
+  onOpenExistingEvent,
+  onNext,
+}: {
+  scrollerRef: RefObject<HTMLDivElement | null>;
+  isCreatingSchedule: boolean;
+  isLongPressPending: boolean;
+  sortedSchedule: { item: ScheduleContent; index: number }[];
+  dragSelection: DragSelection | null;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onScroll: (event: ReactUIEvent<HTMLDivElement>) => void;
+  onOpenExistingEvent: (index: number) => void;
+  onNext: () => void;
+}) {
+  return (
+    <>
       <section className="min-h-0 flex-1 bg-zinc-50 px-3 py-2">
         <div className="relative h-full min-h-0">
           <div className="absolute right-3 top-3 z-10">
@@ -1309,11 +1407,11 @@ export function CreateBookmarkForm({
             ref={scrollerRef}
             data-long-press-pending={isLongPressPending || undefined}
             data-creating-schedule={isCreatingSchedule || undefined}
-            onPointerDown={handleTimelinePointerDown}
-            onPointerMove={handleTimelinePointerMove}
-            onPointerUp={handleTimelinePointerUp}
-            onPointerCancel={handleTimelinePointerCancel}
-            onScroll={handleTimelineScroll}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+            onScroll={onScroll}
             onContextMenu={(event) => event.preventDefault()}
             className={`h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain rounded-lg border border-zinc-200 bg-white shadow-sm ${
               isCreatingSchedule ? "touch-none select-none" : "touch-pan-y"
@@ -1329,7 +1427,7 @@ export function CreateBookmarkForm({
                 <TimelineEventBlock
                   key={`${index}-${item.startTime}-${item.contentName}`}
                   item={item}
-                  onClick={() => openExistingEvent(index)}
+                  onClick={() => onOpenExistingEvent(index)}
                 />
               ))}
 
@@ -1340,17 +1438,63 @@ export function CreateBookmarkForm({
           </div>
         </div>
       </section>
-      {draftEvent ? (
-        <EventSheet
-          draft={draftEvent}
-          fieldError={fieldError}
-          onChange={updateDraft}
-          onCancel={closeDraft}
-          onSave={saveDraftEvent}
-          onRemove={draftEvent.index === null ? undefined : removeDraftEvent}
-        />
-      ) : null}
-    </div>
+      <div className="shrink-0 border-t border-zinc-100 bg-white px-4 py-3">
+        <button
+          type="button"
+          onClick={onNext}
+          className="h-12 w-full rounded-lg bg-zinc-950 text-sm font-semibold text-white"
+        >
+          次へ
+        </button>
+      </div>
+    </>
+  );
+}
+
+function PostMetadataStep({
+  isEdit,
+  isSubmitting,
+  submitError,
+  onBack,
+  onSubmit,
+}: {
+  isEdit: boolean;
+  isSubmitting: boolean;
+  submitError: string | null;
+  onBack: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <>
+      <section className="flex min-h-0 flex-1 flex-col items-center justify-center bg-white px-6 text-center">
+        <h2 className="text-xl font-semibold text-zinc-950">投稿情報</h2>
+        <p className="mt-2 text-sm leading-6 text-zinc-500">
+          次のSTEPで入力画面を実装します
+        </p>
+        {submitError ? (
+          <p className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium leading-6 text-red-700">
+            {submitError}
+          </p>
+        ) : null}
+      </section>
+      <div className="grid shrink-0 grid-cols-2 gap-3 border-t border-zinc-100 bg-white px-4 py-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="h-12 rounded-lg border border-zinc-200 bg-white text-sm font-semibold text-zinc-700"
+        >
+          戻る
+        </button>
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={isSubmitting}
+          className="h-12 rounded-lg bg-zinc-950 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-300"
+        >
+          {isSubmitting ? "保存中..." : isEdit ? "変更を保存" : "投稿する"}
+        </button>
+      </div>
+    </>
   );
 }
 
