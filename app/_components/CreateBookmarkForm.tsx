@@ -32,6 +32,8 @@ export type ScheduleContent = {
   spot_name?: string | null;
   stayDurationLegacy?: string | number | null;
   stay_duration?: string | number | null;
+  isLegacyPlaceNameMissing?: boolean;
+  isTouched?: boolean;
 };
 export type ScheduleItemInput = {
   contentName?: string | null;
@@ -53,6 +55,8 @@ export type ScheduleItemInput = {
   spot_name?: string | null;
   stayDurationLegacy?: string | number | null;
   stay_duration?: string | number | null;
+  isLegacyPlaceNameMissing?: boolean;
+  isTouched?: boolean;
 };
 
 export type BookmarkFormValue = {
@@ -150,6 +154,13 @@ export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent 
   const startMinutes = toMinutes(rawStartTime);
   const startTime = startMinutes === null ? "" : formatTimelineTime(startMinutes);
   const legacyDuration = item.stay_duration ?? item.stayDurationLegacy;
+  const contentName =
+    item.content_name ?? item.contentName ?? item.spot_name ?? item.spotName ?? "";
+  const placeName = item.place_name ?? item.placeName ?? "";
+  const hasLegacySpotName = Boolean((item.spot_name ?? item.spotName)?.trim());
+  const isLegacyPlaceNameMissing =
+    item.isLegacyPlaceNameMissing ??
+    (hasLegacySpotName && !placeName.trim());
   const inferredEndTime =
     item.end_time ??
     item.endTime ??
@@ -163,8 +174,8 @@ export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent 
   return {
     ...emptyContent(),
     ...item,
-    contentName: item.content_name ?? item.contentName ?? item.spot_name ?? item.spotName ?? "",
-    placeName: item.place_name ?? item.placeName ?? "",
+    contentName,
+    placeName,
     startTime,
     startDate: item.startDate ?? "",
     endTime,
@@ -177,6 +188,8 @@ export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent 
     spot_name: item.spot_name ?? item.spotName ?? null,
     stayDurationLegacy: legacyDuration ?? null,
     stay_duration: legacyDuration ?? null,
+    isLegacyPlaceNameMissing,
+    isTouched: item.isTouched ?? false,
   };
 }
 
@@ -428,6 +441,10 @@ function toScheduleRow(
     comment: item.comment.trim() || null,
     image_url: item.imageUrl?.trim() || null,
   };
+}
+
+function allowsMissingPlaceName(item: ScheduleContent) {
+  return Boolean(item.isLegacyPlaceNameMissing && !item.isTouched);
 }
 
 export function CreateBookmarkForm({
@@ -870,6 +887,8 @@ export function CreateBookmarkForm({
       startDate: draftEvent.item.startDate || selectedDate,
       endDate: draftEvent.item.endDate || selectedDate,
       stayDuration: `${endMinutes - startMinutes}分`,
+      isLegacyPlaceNameMissing: false,
+      isTouched: true,
     };
 
     setSchedule((items) => {
@@ -960,7 +979,7 @@ export function CreateBookmarkForm({
     }
 
     const invalidPlaceItem = scheduleToSave.find(
-      (item) => !item.placeName?.trim(),
+      (item) => !item.placeName?.trim() && !allowsMissingPlaceName(item),
     );
     if (invalidPlaceItem) {
       setSubmitError("場所名が未入力の項目があります。項目を開いて入力してください。");
