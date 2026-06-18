@@ -20,8 +20,12 @@ export type ScheduleContent = {
   endDate: string;
   endTime: string;
   comment: string;
+  placeName?: string;
   stayDuration?: string;
   imageUrl?: string;
+  time?: string | null;
+  spotName?: string | null;
+  stayDurationLegacy?: string | number | null;
 };
 
 export type BookmarkFormValue = {
@@ -29,8 +33,16 @@ export type BookmarkFormValue = {
   coverImageUrl?: string;
   type?: string | null;
   isPublished?: boolean;
+  routeDate?: string | null;
+  area?: string | null;
+  transportType?: string | null;
+  companionType?: string | null;
+  budget?: number | null;
+  weatherType?: string | null;
+  caption?: string | null;
   plannedSchedule: ScheduleContent[];
   actualSchedule: ScheduleContent[];
+  scheduleItems?: ScheduleContent[];
 };
 
 type DraftEvent = {
