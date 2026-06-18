@@ -92,6 +92,9 @@ type DatePickerPosition = {
   maxHeight: number;
 };
 type CreateBookmarkStep = "schedule" | "metadata";
+type TransportType = "walking" | "public_transport" | "car";
+type CompanionType = "" | "solo" | "friends" | "date" | "family";
+type WeatherType = "" | "sunny" | "rain_ok" | "any";
 type ScheduleItemRow = {
   post_id: string;
   sort_order: number;
@@ -117,6 +120,22 @@ const moveCancelThreshold = 10;
 const postImageBucket = process.env.NEXT_PUBLIC_SUPABASE_POST_IMAGE_BUCKET || "post-images";
 const calendarMargin = 12;
 const calendarMaxWidth = 320;
+const transportOptions: { value: TransportType; label: string }[] = [
+  { value: "walking", label: "徒歩中心" },
+  { value: "public_transport", label: "電車あり" },
+  { value: "car", label: "車あり" },
+];
+const companionOptions: { value: Exclude<CompanionType, "">; label: string }[] = [
+  { value: "solo", label: "1人" },
+  { value: "friends", label: "友達" },
+  { value: "date", label: "デート" },
+  { value: "family", label: "家族" },
+];
+const weatherOptions: { value: Exclude<WeatherType, "">; label: string }[] = [
+  { value: "sunny", label: "晴れ向き" },
+  { value: "rain_ok", label: "雨でもOK" },
+  { value: "any", label: "どちらでもOK" },
+];
 
 const timeOptions = Array.from(
   { length: timelineEnd / stepMinutes + 1 },
@@ -483,6 +502,63 @@ function validateScheduleItemsForStep(items: ScheduleContent[]) {
   return null;
 }
 
+function normalizeTransportType(value?: string | null): TransportType | "" {
+  if (value === "walking" || value === "public_transport" || value === "car") {
+    return value;
+  }
+
+  return "";
+}
+
+function normalizeCompanionType(value?: string | null): CompanionType {
+  if (
+    value === "solo" ||
+    value === "friends" ||
+    value === "date" ||
+    value === "family"
+  ) {
+    return value;
+  }
+
+  return "";
+}
+
+function normalizeWeatherType(value?: string | null): WeatherType {
+  if (value === "sunny" || value === "rain_ok" || value === "any") {
+    return value;
+  }
+
+  return "";
+}
+
+function validatePostMetadata({
+  title,
+  routeDate,
+  area,
+  transportType,
+  budget,
+}: {
+  title: string;
+  routeDate: string;
+  area: string;
+  transportType: TransportType | "";
+  budget: string;
+}) {
+  if (!title.trim()) return "タイトルを入力してください";
+  if (!routeDate) return "日付を選択してください";
+  if (!area.trim()) return "エリアを入力してください";
+  if (!transportType) return "移動手段を選択してください";
+
+  if (budget.trim()) {
+    const normalizedBudget = budget.trim();
+    if (!/^\d+$/.test(normalizedBudget)) {
+      return "予算は0以上の整数で入力してください";
+    }
+  }
+
+  return null;
+}
+
 export function CreateBookmarkForm({
   mode = "create",
   postId,
@@ -511,6 +587,20 @@ export function CreateBookmarkForm({
   const [isPublished] = useState(
     initialValue?.isPublished ?? true,
   );
+  const [area, setArea] = useState(initialValue?.area ?? "");
+  const [transportType, setTransportType] = useState<TransportType | "">(
+    normalizeTransportType(initialValue?.transportType),
+  );
+  const [companionType, setCompanionType] = useState<CompanionType>(
+    normalizeCompanionType(initialValue?.companionType),
+  );
+  const [budget, setBudget] = useState(
+    initialValue?.budget == null ? "" : String(initialValue.budget),
+  );
+  const [weatherType, setWeatherType] = useState<WeatherType>(
+    normalizeWeatherType(initialValue?.weatherType),
+  );
+  const [caption, setCaption] = useState(initialValue?.caption ?? "");
   const [schedule, setSchedule] = useState<ScheduleContent[]>(
     normalizeSchedule(
       initialValue?.scheduleItems ??
@@ -521,7 +611,8 @@ export function CreateBookmarkForm({
   );
   const [selectedDate, setSelectedDate] = useState(() =>
     dateInputValue(
-      initialValue?.plannedSchedule?.[0]?.startDate ||
+      initialValue?.routeDate ||
+        initialValue?.plannedSchedule?.[0]?.startDate ||
         initialValue?.actualSchedule?.[0]?.startDate,
     ),
   );
@@ -574,10 +665,30 @@ export function CreateBookmarkForm({
       coverImageUrl,
       type: postType,
       isPublished,
+      routeDate: selectedDate,
+      area,
+      transportType: transportType || null,
+      companionType: companionType || null,
+      budget: budget.trim() ? Number(budget.trim()) : null,
+      weatherType: weatherType || null,
+      caption,
       plannedSchedule: postType === "actual" ? [] : schedule,
       actualSchedule: postType === "actual" ? schedule : [],
     }),
-    [coverImageUrl, isPublished, postType, schedule, title],
+    [
+      area,
+      budget,
+      caption,
+      companionType,
+      coverImageUrl,
+      isPublished,
+      postType,
+      schedule,
+      selectedDate,
+      title,
+      transportType,
+      weatherType,
+    ],
   );
 
   useEffect(() => {
@@ -1143,6 +1254,24 @@ export function CreateBookmarkForm({
     setCurrentStep("schedule");
   }
 
+  function handleMetadataSubmit() {
+    const validationMessage = validatePostMetadata({
+      title,
+      routeDate: selectedDate,
+      area,
+      transportType,
+      budget,
+    });
+
+    if (validationMessage) {
+      setSubmitError(validationMessage);
+      return;
+    }
+
+    setSubmitError(null);
+    handleSubmit();
+  }
+
   function openDatePicker() {
     setCalendarMonth(parseDateInput(selectedDate));
     setIsDatePickerOpen((current) => !current);
@@ -1217,100 +1346,6 @@ export function CreateBookmarkForm({
         <span className="w-14" aria-hidden="true" />
       </header>
 
-      {currentStep === "schedule" ? (
-        <section className="shrink-0 border-b border-zinc-100 bg-white px-3 py-2">
-          <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="タイトルを入力"
-              className="h-11 min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-base font-medium outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
-            />
-            <div className="relative flex shrink-0 items-center gap-1.5">
-              <span className="hidden text-xs font-semibold tabular-nums text-zinc-500 min-[380px]:inline">
-                {selectedDate.slice(5).replace("-", "/")}
-              </span>
-              <button
-                ref={dateButtonRef}
-                type="button"
-                onClick={openDatePicker}
-                aria-expanded={isDatePickerOpen}
-                aria-label="日付を選択"
-                className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-800 shadow-sm active:bg-zinc-50"
-              >
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  className="h-5 w-5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                >
-                  <path d="M8 2v4" />
-                  <path d="M16 2v4" />
-                  <rect width="18" height="18" x="3" y="4" rx="2" />
-                  <path d="M3 10h18" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <p className="mt-1.5 text-xs leading-5 text-zinc-400">
-            開始時間を長押しし、そのまま下にドラッグして時間を設定
-          </p>
-
-          <div className="mt-2 flex min-w-0 items-center gap-2">
-            <input
-              ref={thumbnailInputRef}
-              type="file"
-              accept="image/*"
-              onChange={(event) => {
-                handleThumbnailChange(event.target.files?.[0] ?? null);
-                event.target.value = "";
-              }}
-              className="sr-only"
-            />
-            <button
-              type="button"
-              onClick={openThumbnailPicker}
-              className="h-9 shrink-0 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 shadow-sm active:bg-zinc-50"
-            >
-              {thumbnailPreviewUrl ? "サムネイル画像を変更" : "サムネイル画像を追加"}
-            </button>
-            {thumbnailPreviewUrl ? (
-              <>
-                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-zinc-100">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={thumbnailPreviewUrl}
-                    alt="サムネイル画像プレビュー"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
-                  {thumbnailFileName || "設定済み"}
-                </span>
-                <button
-                  type="button"
-                  onClick={removeThumbnail}
-                  className="h-9 shrink-0 rounded-lg bg-zinc-100 px-3 text-xs font-semibold text-zinc-600 active:bg-zinc-200"
-                >
-                  削除
-                </button>
-              </>
-            ) : null}
-          </div>
-
-          {submitError ? (
-            <p className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
-              {submitError}
-            </p>
-          ) : null}
-        </section>
-      ) : null}
-
       {currentStep === "schedule" && isDatePickerOpen && datePickerPosition
         ? createPortal(
             <DatePickerPopover
@@ -1340,14 +1375,37 @@ export function CreateBookmarkForm({
           onScroll={handleTimelineScroll}
           onOpenExistingEvent={openExistingEvent}
           onNext={handleNextStep}
+          submitError={submitError}
         />
       ) : (
         <PostMetadataStep
           isEdit={isEdit}
           isSubmitting={isSubmitting}
           submitError={submitError}
+          title={title}
+          routeDate={selectedDate}
+          area={area}
+          transportType={transportType}
+          companionType={companionType}
+          budget={budget}
+          weatherType={weatherType}
+          caption={caption}
+          thumbnailPreviewUrl={thumbnailPreviewUrl}
+          thumbnailFileName={thumbnailFileName}
+          thumbnailInputRef={thumbnailInputRef}
+          onTitleChange={setTitle}
+          onRouteDateChange={setSelectedDate}
+          onAreaChange={setArea}
+          onTransportTypeChange={setTransportType}
+          onCompanionTypeChange={setCompanionType}
+          onBudgetChange={setBudget}
+          onWeatherTypeChange={setWeatherType}
+          onCaptionChange={setCaption}
+          onThumbnailChange={handleThumbnailChange}
+          onOpenThumbnailPicker={openThumbnailPicker}
+          onRemoveThumbnail={removeThumbnail}
           onBack={handleBackToScheduleStep}
-          onSubmit={handleSubmit}
+          onSubmit={handleMetadataSubmit}
         />
       )}
       {currentStep === "schedule" && draftEvent ? (
@@ -1377,6 +1435,7 @@ function ScheduleEditorStep({
   onScroll,
   onOpenExistingEvent,
   onNext,
+  submitError,
 }: {
   scrollerRef: RefObject<HTMLDivElement | null>;
   isCreatingSchedule: boolean;
@@ -1390,6 +1449,7 @@ function ScheduleEditorStep({
   onScroll: (event: ReactUIEvent<HTMLDivElement>) => void;
   onOpenExistingEvent: (index: number) => void;
   onNext: () => void;
+  submitError: string | null;
 }) {
   return (
     <>
@@ -1439,6 +1499,11 @@ function ScheduleEditorStep({
         </div>
       </section>
       <div className="shrink-0 border-t border-zinc-100 bg-white px-4 py-3">
+        {submitError ? (
+          <p className="mb-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
+            {submitError}
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={onNext}
@@ -1455,24 +1520,244 @@ function PostMetadataStep({
   isEdit,
   isSubmitting,
   submitError,
+  title,
+  routeDate,
+  area,
+  transportType,
+  companionType,
+  budget,
+  weatherType,
+  caption,
+  thumbnailPreviewUrl,
+  thumbnailFileName,
+  thumbnailInputRef,
+  onTitleChange,
+  onRouteDateChange,
+  onAreaChange,
+  onTransportTypeChange,
+  onCompanionTypeChange,
+  onBudgetChange,
+  onWeatherTypeChange,
+  onCaptionChange,
+  onThumbnailChange,
+  onOpenThumbnailPicker,
+  onRemoveThumbnail,
   onBack,
   onSubmit,
 }: {
   isEdit: boolean;
   isSubmitting: boolean;
   submitError: string | null;
+  title: string;
+  routeDate: string;
+  area: string;
+  transportType: TransportType | "";
+  companionType: CompanionType;
+  budget: string;
+  weatherType: WeatherType;
+  caption: string;
+  thumbnailPreviewUrl: string;
+  thumbnailFileName: string;
+  thumbnailInputRef: RefObject<HTMLInputElement | null>;
+  onTitleChange: (value: string) => void;
+  onRouteDateChange: (value: string) => void;
+  onAreaChange: (value: string) => void;
+  onTransportTypeChange: (value: TransportType | "") => void;
+  onCompanionTypeChange: (value: CompanionType) => void;
+  onBudgetChange: (value: string) => void;
+  onWeatherTypeChange: (value: WeatherType) => void;
+  onCaptionChange: (value: string) => void;
+  onThumbnailChange: (file: File | null) => void;
+  onOpenThumbnailPicker: () => void;
+  onRemoveThumbnail: () => void;
   onBack: () => void;
   onSubmit: () => void;
 }) {
   return (
     <>
-      <section className="flex min-h-0 flex-1 flex-col items-center justify-center bg-white px-6 text-center">
-        <h2 className="text-xl font-semibold text-zinc-950">投稿情報</h2>
-        <p className="mt-2 text-sm leading-6 text-zinc-500">
-          次のSTEPで入力画面を実装します
-        </p>
+      <section className="min-h-0 flex-1 overflow-y-auto bg-white px-4 py-5">
+        <div className="mx-auto max-w-[390px] space-y-5">
+          <div>
+            <h2 className="text-xl font-semibold text-zinc-950">投稿情報</h2>
+            <p className="mt-1 text-sm leading-6 text-zinc-500">
+              ルート全体の情報を入力してください
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-xs font-semibold text-zinc-600">
+              サムネイル画像
+            </span>
+            <input
+              ref={thumbnailInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                onThumbnailChange(event.target.files?.[0] ?? null);
+                event.target.value = "";
+              }}
+              className="sr-only"
+            />
+            <div className="flex min-w-0 items-center gap-3">
+              {thumbnailPreviewUrl ? (
+                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={thumbnailPreviewUrl}
+                    alt="サムネイル画像プレビュー"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-xs font-semibold text-zinc-400">
+                  未設定
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={onOpenThumbnailPicker}
+                  className="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm active:bg-zinc-50"
+                >
+                  {thumbnailPreviewUrl ? "画像を変更" : "画像を選択"}
+                </button>
+                {thumbnailPreviewUrl ? (
+                  <button
+                    type="button"
+                    onClick={onRemoveThumbnail}
+                    className="ml-2 h-10 rounded-lg bg-zinc-100 px-3 text-sm font-semibold text-zinc-600 active:bg-zinc-200"
+                  >
+                    削除
+                  </button>
+                ) : null}
+                {thumbnailFileName || thumbnailPreviewUrl ? (
+                  <p className="mt-2 truncate text-xs text-zinc-500">
+                    {thumbnailFileName || "設定済み"}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-zinc-600">タイトル</span>
+            <input
+              value={title}
+              onChange={(event) => onTitleChange(event.target.value)}
+              maxLength={100}
+              placeholder="朝サウナとベーカリーで整う休日"
+              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-zinc-600">日付</span>
+            <input
+              type="date"
+              value={routeDate}
+              onChange={(event) => onRouteDateChange(event.target.value)}
+              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold outline-none focus:border-zinc-900"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-zinc-600">エリア</span>
+            <input
+              value={area}
+              onChange={(event) => onAreaChange(event.target.value)}
+              placeholder="中目黒エリア"
+              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-zinc-600">移動手段</span>
+            <select
+              value={transportType}
+              onChange={(event) =>
+                onTransportTypeChange(event.target.value as TransportType | "")
+              }
+              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold outline-none focus:border-zinc-900"
+            >
+              <option value="">選択してください</option>
+              {transportOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-zinc-600">
+              一緒に行く人
+            </span>
+            <select
+              value={companionType}
+              onChange={(event) =>
+                onCompanionTypeChange(event.target.value as CompanionType)
+              }
+              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold outline-none focus:border-zinc-900"
+            >
+              <option value="">未選択</option>
+              {companionOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-zinc-600">予算</span>
+            <div className="mt-1.5 grid grid-cols-[1fr_auto] items-center gap-2">
+              <input
+                inputMode="numeric"
+                value={budget}
+                onChange={(event) => onBudgetChange(event.target.value)}
+                placeholder="2500"
+                className="h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+              />
+              <span className="text-sm font-semibold text-zinc-500">円</span>
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-zinc-600">
+              おすすめ天候
+            </span>
+            <select
+              value={weatherType}
+              onChange={(event) =>
+                onWeatherTypeChange(event.target.value as WeatherType)
+              }
+              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold outline-none focus:border-zinc-900"
+            >
+              <option value="">未選択</option>
+              {weatherOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-zinc-600">
+              キャプション
+            </span>
+            <textarea
+              value={caption}
+              onChange={(event) => onCaptionChange(event.target.value)}
+              placeholder="朝から無理なく楽しめるルートです。"
+              rows={4}
+              className="mt-1.5 w-full resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm leading-6 outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+            />
+          </label>
+        </div>
+
         {submitError ? (
-          <p className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium leading-6 text-red-700">
+          <p className="mx-auto mt-4 max-w-[390px] rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium leading-6 text-red-700">
             {submitError}
           </p>
         ) : null}
