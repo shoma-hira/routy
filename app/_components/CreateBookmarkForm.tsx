@@ -23,9 +23,36 @@ export type ScheduleContent = {
   placeName?: string;
   stayDuration?: string;
   imageUrl?: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  content_name?: string | null;
+  place_name?: string | null;
   time?: string | null;
   spotName?: string | null;
+  spot_name?: string | null;
   stayDurationLegacy?: string | number | null;
+  stay_duration?: string | number | null;
+};
+export type ScheduleItemInput = {
+  contentName?: string | null;
+  startDate?: string | null;
+  startTime?: string | null;
+  endDate?: string | null;
+  endTime?: string | null;
+  comment?: string | null;
+  placeName?: string | null;
+  stayDuration?: string | null;
+  imageUrl?: string | null;
+  image_url?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  content_name?: string | null;
+  place_name?: string | null;
+  time?: string | null;
+  spotName?: string | null;
+  spot_name?: string | null;
+  stayDurationLegacy?: string | number | null;
+  stay_duration?: string | number | null;
 };
 
 export type BookmarkFormValue = {
@@ -59,6 +86,19 @@ type DatePickerPosition = {
   width: number;
   maxHeight: number;
 };
+type ScheduleItemRow = {
+  post_id: string;
+  sort_order: number;
+  start_time: string | null;
+  end_time: string | null;
+  content_name: string;
+  place_name: string | null;
+  time: string | null;
+  spot_name: string;
+  stay_duration: string;
+  comment: string | null;
+  image_url: string | null;
+};
 
 const timelineStart = 0;
 const timelineEnd = 26 * 60;
@@ -80,6 +120,7 @@ const timeOptions = Array.from(
 function emptyContent(): ScheduleContent {
   return {
     contentName: "",
+    placeName: "",
     startDate: "",
     startTime: "",
     endDate: "",
@@ -98,21 +139,45 @@ function getErrorMessage(error: unknown) {
   return "投稿の保存に失敗しました。";
 }
 
-function normalizeSchedule(items?: ScheduleContent[]) {
+function normalizeSchedule(items?: ScheduleItemInput[]) {
   const source = items?.length ? items : [];
 
-  return source.map((item) => {
-    const startMinutes = toMinutes(item.startTime);
-    const inferredEnd =
-      item.endTime || inferEndTimeFromDuration(item.startTime, item.stayDuration);
+  return source.map(normalizeScheduleItem);
+}
 
-    return {
-      ...emptyContent(),
-      ...item,
-      startTime: startMinutes === null ? "" : formatTimelineTime(startMinutes),
-      endTime: inferredEnd,
-    };
-  });
+export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent {
+  const rawStartTime = item.start_time ?? item.startTime ?? item.time ?? "";
+  const startMinutes = toMinutes(rawStartTime);
+  const startTime = startMinutes === null ? "" : formatTimelineTime(startMinutes);
+  const legacyDuration = item.stay_duration ?? item.stayDurationLegacy;
+  const inferredEndTime =
+    item.end_time ??
+    item.endTime ??
+    calculateEndTime(startTime, legacyDuration ?? item.stayDuration);
+  const endMinutes = toMinutes(inferredEndTime);
+  const endTime = endMinutes === null ? "" : formatTimelineTime(endMinutes);
+  const stayDuration =
+    calculateStayDuration(startTime, endTime) ||
+    (item.stayDuration ?? (legacyDuration == null ? "" : String(legacyDuration)));
+
+  return {
+    ...emptyContent(),
+    ...item,
+    contentName: item.content_name ?? item.contentName ?? item.spot_name ?? item.spotName ?? "",
+    placeName: item.place_name ?? item.placeName ?? "",
+    startTime,
+    startDate: item.startDate ?? "",
+    endTime,
+    endDate: item.endDate ?? "",
+    comment: item.comment ?? "",
+    stayDuration,
+    imageUrl: item.imageUrl ?? item.image_url ?? "",
+    time: item.time ?? null,
+    spotName: item.spotName ?? item.spot_name ?? null,
+    spot_name: item.spot_name ?? item.spotName ?? null,
+    stayDurationLegacy: legacyDuration ?? null,
+    stay_duration: legacyDuration ?? null,
+  };
 }
 
 function toMinutes(time?: string) {
@@ -135,6 +200,12 @@ function toMinutes(time?: string) {
 
   const total = hour * 60 + minute;
   return total < timelineStart || total > timelineEnd ? null : total;
+}
+
+function isFiveMinuteTime(time: string) {
+  const minutes = toMinutes(time);
+
+  return minutes !== null && minutes % stepMinutes === 0;
 }
 
 function snapToFiveMinutes(minutes: number) {
@@ -184,12 +255,14 @@ function formatDuration(minutes: number) {
   return rest ? `${hours}時間${rest}分` : `${hours}時間`;
 }
 
-function parseDurationMinutes(value?: string) {
-  if (!value) return null;
+function parseDurationMinutes(value?: string | number | null) {
+  if (value === null || value === undefined || value === "") return null;
 
-  const hourMatch = value.match(/(\d+)\s*時間/);
-  const minuteMatch = value.match(/(\d+)\s*分/);
-  const plainNumber = value.match(/^\s*(\d+)\s*$/);
+  const text = String(value);
+
+  const hourMatch = text.match(/(\d+)\s*時間/);
+  const minuteMatch = text.match(/(\d+)\s*分/);
+  const plainNumber = text.match(/^\s*(\d+)\s*$/);
   const hours = hourMatch ? Number(hourMatch[1]) : 0;
   const minutes = minuteMatch
     ? Number(minuteMatch[1])
@@ -202,12 +275,49 @@ function parseDurationMinutes(value?: string) {
 }
 
 function inferEndTimeFromDuration(startTime: string, stayDuration?: string) {
+  return calculateEndTime(startTime, stayDuration);
+}
+
+function calculateEndTime(
+  startTime: string,
+  stayDuration?: string | number | null,
+) {
   const startMinutes = toMinutes(startTime);
   const duration = parseDurationMinutes(stayDuration);
 
   if (startMinutes === null || duration === null) return "";
 
-  return formatTimelineTime(Math.min(timelineEnd, startMinutes + duration));
+  const endMinutes = startMinutes + duration;
+
+  if (endMinutes > timelineEnd || endMinutes % stepMinutes !== 0) {
+    return "";
+  }
+
+  return formatTimelineTime(endMinutes);
+}
+
+function calculateStayDuration(startTime: string, endTime: string) {
+  const startMinutes = toMinutes(startTime);
+  const endMinutes = toMinutes(endTime);
+
+  if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+    return "";
+  }
+
+  return `${endMinutes - startMinutes}分`;
+}
+
+function hasValidScheduleTimeRange(item: ScheduleContent) {
+  const startMinutes = toMinutes(item.startTime);
+  const endMinutes = toMinutes(item.endTime);
+
+  return (
+    startMinutes !== null &&
+    endMinutes !== null &&
+    startMinutes % stepMinutes === 0 &&
+    endMinutes % stepMinutes === 0 &&
+    endMinutes > startMinutes
+  );
 }
 
 function getDurationMinutes(item: ScheduleContent) {
@@ -222,7 +332,7 @@ function getDurationMinutes(item: ScheduleContent) {
 }
 
 function getStayDuration(item: ScheduleContent) {
-  return `${getDurationMinutes(item)}分`;
+  return calculateStayDuration(item.startTime, item.endTime) || `${getDurationMinutes(item)}分`;
 }
 
 function sanitizeEndTime(startTime: string, endTime: string) {
@@ -286,12 +396,38 @@ function getSafeFileName(fileName: string) {
 function itemHasContent(item: ScheduleContent) {
   return Boolean(
     item.contentName.trim() ||
+      item.placeName?.trim() ||
       item.startTime ||
       item.endTime ||
       item.comment.trim() ||
       item.stayDuration?.trim() ||
       item.imageUrl?.trim(),
   );
+}
+
+function toScheduleRow(
+  item: ScheduleContent,
+  postId: string,
+  index: number,
+): ScheduleItemRow {
+  const contentName = item.contentName.trim();
+  const startTime = item.startTime || null;
+  const endTime = item.endTime || null;
+  const stayDuration = calculateStayDuration(item.startTime, item.endTime);
+
+  return {
+    post_id: postId,
+    sort_order: index,
+    start_time: startTime,
+    end_time: endTime,
+    content_name: contentName,
+    place_name: item.placeName?.trim() || null,
+    time: startTime,
+    spot_name: contentName,
+    stay_duration: stayDuration,
+    comment: item.comment.trim() || null,
+    image_url: item.imageUrl?.trim() || null,
+  };
 }
 
 export function CreateBookmarkForm({
@@ -322,9 +458,10 @@ export function CreateBookmarkForm({
   );
   const [schedule, setSchedule] = useState<ScheduleContent[]>(
     normalizeSchedule(
-      initialValue?.type === "actual"
+      initialValue?.scheduleItems ??
+      (initialValue?.type === "actual"
         ? initialValue?.actualSchedule
-        : initialValue?.plannedSchedule,
+        : initialValue?.plannedSchedule),
     ),
   );
   const [selectedDate, setSelectedDate] = useState(() =>
@@ -805,6 +942,17 @@ export function CreateBookmarkForm({
       return;
     }
 
+    const invalidTimeItem = scheduleToSave.find(
+      (item) =>
+        !hasValidScheduleTimeRange(item) ||
+        !isFiveMinuteTime(item.startTime) ||
+        !isFiveMinuteTime(item.endTime),
+    );
+    if (invalidTimeItem) {
+      setSubmitError("開始時刻と終了時刻は00:00〜26:00の5分刻みで、終了時刻が開始時刻より後になるようにしてください。");
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -858,15 +1006,9 @@ export function CreateBookmarkForm({
 
         if (deleteScheduleError) throw deleteScheduleError;
 
-        const scheduleRows = scheduleToSave.map((item, index) => ({
-          post_id: postId,
-          sort_order: index,
-          time: item.startTime || null,
-          spot_name: item.contentName.trim(),
-          stay_duration: getStayDuration(item),
-          comment: item.comment.trim() || null,
-          image_url: item.imageUrl?.trim() || null,
-        }));
+        const scheduleRows = scheduleToSave.map((item, index) =>
+          toScheduleRow(item, postId, index),
+        );
 
         const { error: scheduleError } = await supabase
           .from("schedule_items")
@@ -902,15 +1044,9 @@ export function CreateBookmarkForm({
       if (postError) throw postError;
       if (!post?.id) throw new Error("投稿IDを取得できませんでした。");
 
-      const scheduleRows = scheduleToSave.map((item, index) => ({
-        post_id: post.id,
-        sort_order: index,
-        time: item.startTime || null,
-        spot_name: item.contentName.trim(),
-        stay_duration: getStayDuration(item),
-        comment: item.comment.trim() || null,
-        image_url: item.imageUrl?.trim() || null,
-      }));
+      const scheduleRows = scheduleToSave.map((item, index) =>
+        toScheduleRow(item, post.id, index),
+      );
 
       const { error: scheduleError } = await supabase
         .from("schedule_items")

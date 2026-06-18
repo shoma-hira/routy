@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   CreateBookmarkForm,
+  normalizeScheduleItem,
   type BookmarkFormValue,
   type ScheduleContent,
 } from "../../../_components/CreateBookmarkForm";
@@ -23,7 +24,12 @@ type PostRow = {
 
 type ScheduleItemRow = {
   id: string;
+  post_id: string;
   sort_order: number | null;
+  start_time: string | null;
+  end_time: string | null;
+  content_name: string | null;
+  place_name: string | null;
   time: string | null;
   spot_name: string | null;
   stay_duration: string | null;
@@ -36,16 +42,7 @@ function getErrorMessage(error: unknown) {
 }
 
 function toScheduleContent(row: ScheduleItemRow): ScheduleContent {
-  return {
-    contentName: row.spot_name ?? "",
-    startDate: "",
-    startTime: row.time ?? "",
-    endDate: "",
-    endTime: "",
-    comment: row.comment ?? "",
-    stayDuration: row.stay_duration ?? "",
-    imageUrl: row.image_url ?? "",
-  };
+  return normalizeScheduleItem(row);
 }
 
 function toFormValue(
@@ -56,7 +53,12 @@ function toFormValue(
     ? scheduleItems.map(toScheduleContent)
     : [toScheduleContent({
         id: "empty",
+        post_id: post.id,
         sort_order: 0,
+        start_time: null,
+        end_time: null,
+        content_name: null,
+        place_name: null,
         time: null,
         spot_name: null,
         stay_duration: null,
@@ -108,7 +110,9 @@ export function EditBookmarkClient({ postId }: { postId: string }) {
 
         const { data: scheduleItems, error: scheduleError } = await supabase
           .from("schedule_items")
-          .select("id,sort_order,time,spot_name,stay_duration,comment,image_url")
+          .select(
+            "id,post_id,sort_order,start_time,end_time,content_name,place_name,time,spot_name,stay_duration,comment,image_url",
+          )
           .eq("post_id", postId)
           .order("sort_order", { ascending: true });
 
