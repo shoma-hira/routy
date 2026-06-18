@@ -839,10 +839,26 @@ export function CreateBookmarkForm({
       return;
     }
 
+    const placeName = draftEvent.item.placeName?.trim() ?? "";
+    if (!placeName) {
+      setFieldError("場所名を入力してください。");
+      return;
+    }
+
     const startMinutes = toMinutes(draftEvent.item.startTime);
     const endMinutes = toMinutes(draftEvent.item.endTime);
 
-    if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+    if (startMinutes === null || endMinutes === null) {
+      setFieldError("開始時刻と終了時刻を正しく設定してください。");
+      return;
+    }
+
+    if (startMinutes % stepMinutes !== 0 || endMinutes % stepMinutes !== 0) {
+      setFieldError("時刻は5分刻みで設定してください。");
+      return;
+    }
+
+    if (endMinutes <= startMinutes) {
       setFieldError("終了時刻は開始時刻より後にしてください。");
       return;
     }
@@ -850,6 +866,7 @@ export function CreateBookmarkForm({
     const nextItem: ScheduleContent = {
       ...draftEvent.item,
       contentName,
+      placeName,
       startDate: draftEvent.item.startDate || selectedDate,
       endDate: draftEvent.item.endDate || selectedDate,
       stayDuration: `${endMinutes - startMinutes}分`,
@@ -939,6 +956,14 @@ export function CreateBookmarkForm({
     const invalidItem = scheduleToSave.find((item) => !item.contentName.trim());
     if (invalidItem) {
       setSubmitError("コンテンツ名が未入力の項目があります。項目を開いて入力してください。");
+      return;
+    }
+
+    const invalidPlaceItem = scheduleToSave.find(
+      (item) => !item.placeName?.trim(),
+    );
+    if (invalidPlaceItem) {
+      setSubmitError("場所名が未入力の項目があります。項目を開いて入力してください。");
       return;
     }
 
@@ -1367,8 +1392,17 @@ function TimelineEventBlock({
       <p className="text-xs font-semibold tabular-nums text-teal-700">
         {item.startTime}〜{formatTimelineTime(endMinutes)}
       </p>
-      {!compact && item.comment ? (
-        <p className="mt-1 line-clamp-2 text-xs leading-5 text-teal-900/75">
+      {item.placeName?.trim() ? (
+        <p className="mt-0.5 truncate text-xs font-medium text-teal-900/80">
+          {item.placeName}
+        </p>
+      ) : null}
+      {item.comment ? (
+        <p
+          className={`mt-0.5 text-xs leading-5 text-teal-900/75 ${
+            compact ? "truncate" : "line-clamp-2"
+          }`}
+        >
           {item.comment}
         </p>
       ) : null}
@@ -1574,15 +1608,26 @@ function EventSheet({
             <input
               value={draft.item.contentName}
               onChange={(event) => onChange("contentName", event.target.value)}
-              placeholder="渋谷スクランブルスクエア"
+              placeholder="ベーカリー"
               className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
             />
-            {fieldError ? (
-              <span className="mt-1.5 block text-xs font-semibold text-red-600">
-                {fieldError}
-              </span>
-            ) : null}
           </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-zinc-600">場所名</span>
+            <input
+              value={draft.item.placeName ?? ""}
+              onChange={(event) => onChange("placeName", event.target.value)}
+              placeholder="Truffle BAKERY 中目黒店"
+              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+            />
+          </label>
+
+          {fieldError ? (
+            <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
+              {fieldError}
+            </p>
+          ) : null}
 
           <label className="block">
             <span className="text-xs font-semibold text-zinc-600">コメント</span>
