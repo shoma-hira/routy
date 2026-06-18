@@ -20,6 +20,13 @@ type PostRow = {
   cover_image_url: string | null;
   type: string | null;
   is_published: boolean;
+  route_date: string | null;
+  area: string | null;
+  transport_type: string | null;
+  companion_type: string | null;
+  budget: number | null;
+  weather_type: string | null;
+  caption: string | null;
 };
 
 type ScheduleItemRow = {
@@ -69,8 +76,21 @@ function toFormValue(
   return {
     title: post.title,
     coverImageUrl: post.cover_image_url ?? "",
+    cover_image_url: post.cover_image_url,
+    existingThumbnailUrl: post.cover_image_url,
     type: post.type,
     isPublished: post.is_published,
+    routeDate: post.route_date,
+    route_date: post.route_date,
+    area: post.area,
+    transportType: post.transport_type,
+    transport_type: post.transport_type,
+    companionType: post.companion_type,
+    companion_type: post.companion_type,
+    budget: post.budget,
+    weatherType: post.weather_type,
+    weather_type: post.weather_type,
+    caption: post.caption,
     plannedSchedule: post.type === "actual" ? [] : schedule,
     actualSchedule: post.type === "actual" ? schedule : [],
   };
@@ -92,7 +112,9 @@ export function EditBookmarkClient({ postId }: { postId: string }) {
         const userId = await getCurrentUserId();
         const { data: post, error: postError } = await supabase
           .from("posts")
-          .select("id,user_id,title,cover_image_url,type,is_published")
+          .select(
+            "id,user_id,title,cover_image_url,type,is_published,route_date,area,transport_type,companion_type,budget,weather_type,caption",
+          )
           .eq("id", postId)
           .maybeSingle();
 

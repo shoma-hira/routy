@@ -63,14 +63,20 @@ export type ScheduleItemInput = {
 export type BookmarkFormValue = {
   title: string;
   coverImageUrl?: string;
+  cover_image_url?: string | null;
+  existingThumbnailUrl?: string | null;
   type?: string | null;
   isPublished?: boolean;
   routeDate?: string | null;
+  route_date?: string | null;
   area?: string | null;
   transportType?: string | null;
+  transport_type?: string | null;
   companionType?: string | null;
-  budget?: number | null;
+  companion_type?: string | null;
+  budget?: number | string | null;
   weatherType?: string | null;
+  weather_type?: string | null;
   caption?: string | null;
   plannedSchedule: ScheduleContent[];
   actualSchedule: ScheduleContent[];
@@ -531,6 +537,24 @@ function normalizeWeatherType(value?: string | null): WeatherType {
   return "";
 }
 
+function getInitialThumbnailUrl(initialValue?: BookmarkFormValue) {
+  return (
+    initialValue?.existingThumbnailUrl ??
+    initialValue?.coverImageUrl ??
+    initialValue?.cover_image_url ??
+    ""
+  );
+}
+
+function getInitialRouteDate(initialValue?: BookmarkFormValue) {
+  return (
+    initialValue?.routeDate ||
+    initialValue?.route_date ||
+    initialValue?.plannedSchedule?.[0]?.startDate ||
+    initialValue?.actualSchedule?.[0]?.startDate
+  );
+}
+
 function validatePostMetadata({
   title,
   routeDate,
@@ -572,15 +596,13 @@ export function CreateBookmarkForm({
 }) {
   const router = useRouter();
   const isEdit = mode === "edit";
+  const initialThumbnailUrl = getInitialThumbnailUrl(initialValue);
   const [currentStep, setCurrentStep] =
     useState<CreateBookmarkStep>("schedule");
   const [title, setTitle] = useState(initialValue?.title ?? "");
-  const [coverImageUrl, setCoverImageUrl] = useState(
-    initialValue?.coverImageUrl ?? "",
-  );
-  const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState(
-    initialValue?.coverImageUrl ?? "",
-  );
+  const [coverImageUrl, setCoverImageUrl] = useState(initialThumbnailUrl);
+  const [thumbnailPreviewUrl, setThumbnailPreviewUrl] =
+    useState(initialThumbnailUrl);
   const [selectedThumbnailFile, setSelectedThumbnailFile] = useState<File | null>(null);
   const [thumbnailFileName, setThumbnailFileName] = useState("");
   const [postType] = useState(initialValue?.type ?? "plan");
@@ -589,16 +611,16 @@ export function CreateBookmarkForm({
   );
   const [area, setArea] = useState(initialValue?.area ?? "");
   const [transportType, setTransportType] = useState<TransportType | "">(
-    normalizeTransportType(initialValue?.transportType),
+    normalizeTransportType(initialValue?.transportType ?? initialValue?.transport_type),
   );
   const [companionType, setCompanionType] = useState<CompanionType>(
-    normalizeCompanionType(initialValue?.companionType),
+    normalizeCompanionType(initialValue?.companionType ?? initialValue?.companion_type),
   );
   const [budget, setBudget] = useState(
     initialValue?.budget == null ? "" : String(initialValue.budget),
   );
   const [weatherType, setWeatherType] = useState<WeatherType>(
-    normalizeWeatherType(initialValue?.weatherType),
+    normalizeWeatherType(initialValue?.weatherType ?? initialValue?.weather_type),
   );
   const [caption, setCaption] = useState(initialValue?.caption ?? "");
   const [schedule, setSchedule] = useState<ScheduleContent[]>(
@@ -610,11 +632,7 @@ export function CreateBookmarkForm({
     ),
   );
   const [selectedDate, setSelectedDate] = useState(() =>
-    dateInputValue(
-      initialValue?.routeDate ||
-        initialValue?.plannedSchedule?.[0]?.startDate ||
-        initialValue?.actualSchedule?.[0]?.startDate,
-    ),
+    dateInputValue(getInitialRouteDate(initialValue)),
   );
   const [draftEvent, setDraftEvent] = useState<DraftEvent | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
