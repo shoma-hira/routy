@@ -417,7 +417,7 @@ export default function MyPage() {
               {emptyMessage}
             </p>
           ) : (
-            <div className="grid grid-cols-2 gap-3 px-2 pt-4 sm:grid-cols-2 md:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-28">
               {activePosts.map((post) => (
                 <PostCard key={post.id} post={post} />
               ))}
