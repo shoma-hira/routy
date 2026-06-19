@@ -1617,19 +1617,22 @@ function PostMetadataStep({
 }) {
   return (
     <>
-      <section className="min-h-0 flex-1 overflow-y-auto bg-white px-4 py-5">
-        <div className="mx-auto max-w-[390px] space-y-5">
-          <div>
+      <section className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-zinc-50 px-4 py-5">
+        <div className="mx-auto max-w-[390px] space-y-4">
+          <div className="px-1">
             <h2 className="text-xl font-semibold text-zinc-950">投稿情報</h2>
             <p className="mt-1 text-sm leading-6 text-zinc-500">
               ルート全体の情報を入力してください
             </p>
           </div>
 
-          <div className="space-y-2">
-            <span className="text-xs font-semibold text-zinc-600">
-              サムネイル画像
-            </span>
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold text-zinc-950">
+                サムネイル画像
+              </span>
+              <span className="text-xs font-semibold text-emerald-700">任意</span>
+            </div>
             <input
               ref={thumbnailInputRef}
               type="file"
@@ -1642,7 +1645,7 @@ function PostMetadataStep({
             />
             <div className="flex min-w-0 items-center gap-3">
               {thumbnailPreviewUrl ? (
-                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
+                <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={thumbnailPreviewUrl}
@@ -1651,7 +1654,7 @@ function PostMetadataStep({
                   />
                 </div>
               ) : (
-                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-xs font-semibold text-zinc-400">
+                <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-xs font-semibold text-emerald-700/60">
                   未設定
                 </div>
               )}
@@ -1659,7 +1662,7 @@ function PostMetadataStep({
                 <button
                   type="button"
                   onClick={onOpenThumbnailPicker}
-                  className="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 shadow-sm active:bg-zinc-50"
+                  className="h-10 rounded-full bg-emerald-700 px-4 text-sm font-semibold text-white active:bg-emerald-800"
                 >
                   {thumbnailPreviewUrl ? "画像を変更" : "画像を選択"}
                 </button>
@@ -1667,7 +1670,7 @@ function PostMetadataStep({
                   <button
                     type="button"
                     onClick={onRemoveThumbnail}
-                    className="ml-2 h-10 rounded-lg bg-zinc-100 px-3 text-sm font-semibold text-zinc-600 active:bg-zinc-200"
+                    className="ml-2 h-10 rounded-full bg-zinc-100 px-3 text-sm font-semibold text-zinc-600 active:bg-zinc-200"
                   >
                     削除
                   </button>
@@ -1681,45 +1684,57 @@ function PostMetadataStep({
             </div>
           </div>
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">タイトル</span>
+          <label className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <span className="mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-zinc-950">
+              タイトル
+              <span className="text-xs font-semibold text-emerald-700">必須</span>
+            </span>
             <input
               value={title}
               onChange={(event) => onTitleChange(event.target.value)}
               maxLength={100}
               placeholder="朝サウナとベーカリーで整う休日"
-              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+              className="h-12 w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:bg-white"
             />
           </label>
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">日付</span>
+          <label className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <span className="mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-zinc-950">
+              日付
+              <span className="text-xs font-semibold text-emerald-700">必須</span>
+            </span>
             <input
               type="date"
               value={routeDate}
               onChange={(event) => onRouteDateChange(event.target.value)}
-              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold outline-none focus:border-zinc-900"
+              className="h-12 w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500 focus:bg-white"
             />
           </label>
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">エリア</span>
+          <label className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <span className="mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-zinc-950">
+              エリア
+              <span className="text-xs font-semibold text-emerald-700">必須</span>
+            </span>
             <input
               value={area}
               onChange={(event) => onAreaChange(event.target.value)}
               placeholder="中目黒エリア"
-              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+              className="h-12 w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:bg-white"
             />
           </label>
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">移動手段</span>
+          <label className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <span className="mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-zinc-950">
+              移動手段
+              <span className="text-xs font-semibold text-emerald-700">必須</span>
+            </span>
             <select
               value={transportType}
               onChange={(event) =>
                 onTransportTypeChange(event.target.value as TransportType | "")
               }
-              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold outline-none focus:border-zinc-900"
+              className="h-12 w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500 focus:bg-white"
             >
               <option value="">選択してください</option>
               {transportOptions.map((option) => (
@@ -1730,16 +1745,17 @@ function PostMetadataStep({
             </select>
           </label>
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">
+          <label className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <span className="mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-zinc-950">
               一緒に行く人
+              <span className="text-xs font-semibold text-zinc-400">任意</span>
             </span>
             <select
               value={companionType}
               onChange={(event) =>
                 onCompanionTypeChange(event.target.value as CompanionType)
               }
-              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold outline-none focus:border-zinc-900"
+              className="h-12 w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500 focus:bg-white"
             >
               <option value="">未選択</option>
               {companionOptions.map((option) => (
@@ -1750,30 +1766,34 @@ function PostMetadataStep({
             </select>
           </label>
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">予算</span>
-            <div className="mt-1.5 grid grid-cols-[1fr_auto] items-center gap-2">
+          <label className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <span className="mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-zinc-950">
+              予算
+              <span className="text-xs font-semibold text-zinc-400">任意</span>
+            </span>
+            <div className="grid grid-cols-[1fr_auto] items-center gap-2">
               <input
                 inputMode="numeric"
                 value={budget}
                 onChange={(event) => onBudgetChange(event.target.value)}
                 placeholder="2500"
-                className="h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+                className="h-12 w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:bg-white"
               />
               <span className="text-sm font-semibold text-zinc-500">円</span>
             </div>
           </label>
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">
+          <label className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <span className="mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-zinc-950">
               おすすめ天候
+              <span className="text-xs font-semibold text-zinc-400">任意</span>
             </span>
             <select
               value={weatherType}
               onChange={(event) =>
                 onWeatherTypeChange(event.target.value as WeatherType)
               }
-              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold outline-none focus:border-zinc-900"
+              className="h-12 w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500 focus:bg-white"
             >
               <option value="">未選択</option>
               {weatherOptions.map((option) => (
@@ -1784,31 +1804,32 @@ function PostMetadataStep({
             </select>
           </label>
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">
+          <label className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+            <span className="mb-2 flex items-center justify-between gap-3 text-sm font-semibold text-zinc-950">
               キャプション
+              <span className="text-xs font-semibold text-zinc-400">任意</span>
             </span>
             <textarea
               value={caption}
               onChange={(event) => onCaptionChange(event.target.value)}
               placeholder="朝から無理なく楽しめるルートです。"
               rows={4}
-              className="mt-1.5 w-full resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm leading-6 outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+              className="w-full resize-none rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-3 text-sm leading-6 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:bg-white"
             />
           </label>
         </div>
 
         {submitError ? (
-          <p className="mx-auto mt-4 max-w-[390px] rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium leading-6 text-red-700">
+          <p className="mx-auto mt-4 max-w-[390px] rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium leading-6 text-red-700">
             {submitError}
           </p>
         ) : null}
       </section>
-      <div className="grid shrink-0 grid-cols-2 gap-3 border-t border-zinc-100 bg-white px-4 py-3">
+      <div className="grid shrink-0 grid-cols-2 gap-3 border-t border-zinc-100 bg-white px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
         <button
           type="button"
           onClick={onBack}
-          className="h-12 rounded-lg border border-zinc-200 bg-white text-sm font-semibold text-zinc-700"
+          className="h-12 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700"
         >
           戻る
         </button>
@@ -1816,7 +1837,7 @@ function PostMetadataStep({
           type="button"
           onClick={onSubmit}
           disabled={isSubmitting}
-          className="h-12 rounded-lg bg-zinc-950 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-300"
+          className="h-12 rounded-xl bg-emerald-700 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-300"
         >
           {isSubmitting ? "保存中..." : isEdit ? "変更を保存" : "投稿する"}
         </button>
