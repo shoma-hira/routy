@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "../_components/AppShell";
 import { PostCard, type PostCardPost } from "../_components/PostCard";
@@ -392,13 +391,6 @@ export default function HomePage() {
           </div>
         </>
       )}
-      <Link
-        href="/bookmarks/new"
-        aria-label="しおりを作成"
-        className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-[max(1rem,calc((100vw-430px)/2+1rem))] z-20 flex h-14 w-14 items-center justify-center rounded-full bg-zinc-950 text-3xl font-light leading-none text-white shadow-lg active:scale-95"
-      >
-        +
-      </Link>
     </AppShell>
   );
 }

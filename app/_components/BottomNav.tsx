@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 const navItems = [
   { href: "/home", label: "ホーム", icon: "H", id: "home" },
-  { href: "/home#search", label: "検索", icon: "S", id: "search" },
+  { href: "/bookmarks/new", label: "しおり作成", icon: "+", id: "create" },
   { href: "/mypage", label: "マイページ", icon: "M", id: "mypage" },
 ];
 
@@ -17,9 +17,7 @@ export function BottomNav() {
       <div className="grid h-16 w-full grid-cols-3 px-3 pb-[env(safe-area-inset-bottom)]">
         {navItems.map((item) => {
           const active =
-            item.id === "search"
-              ? false
-              : item.id === "home"
+            item.id === "home"
                 ? pathname === "/home"
                 : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
