@@ -2095,14 +2095,21 @@ function EventSheet({
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/35 px-0">
-      <div className="max-h-[88dvh] w-full max-w-[430px] overflow-y-auto rounded-t-2xl bg-white px-4 pb-[calc(20px+env(safe-area-inset-bottom))] pt-4 shadow-2xl">
+      <div className="max-h-[90dvh] w-full max-w-[430px] overflow-y-auto rounded-t-3xl bg-white px-4 pb-[calc(18px+env(safe-area-inset-bottom))] pt-3 shadow-2xl">
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-zinc-300" />
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-zinc-950">
+        <div className="mb-5 grid grid-cols-[64px_1fr_64px] items-center gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-10 text-left text-sm font-semibold text-zinc-500"
+          >
+            閉じる
+          </button>
+          <div className="min-w-0 text-center">
+            <h2 className="truncate text-base font-semibold text-zinc-950">
               {draft.index === null ? "スケジュールを追加" : "スケジュールを編集"}
             </h2>
-            <p className="mt-1 text-sm font-medium tabular-nums text-zinc-500">
+            <p className="mt-1 text-xs font-semibold tabular-nums text-emerald-700">
               {draft.item.startTime}〜{draft.item.endTime} / {formatDuration(duration)}
             </p>
           </div>
@@ -2110,21 +2117,23 @@ function EventSheet({
             <button
               type="button"
               onClick={onRemove}
-              className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600"
+              className="h-10 rounded-full bg-red-50 px-3 text-sm font-semibold text-red-600 active:bg-red-100"
             >
               削除
             </button>
-          ) : null}
+          ) : (
+            <span aria-hidden="true" />
+          )}
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <label className="block">
+            <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
               <span className="text-xs font-semibold text-zinc-600">開始時刻</span>
               <select
                 value={draft.item.startTime}
                 onChange={(event) => onChange("startTime", event.target.value)}
-                className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold outline-none focus:border-zinc-900"
+                className="mt-2 h-12 w-full rounded-xl border border-zinc-100 bg-white px-3 text-sm font-semibold tabular-nums outline-none focus:border-emerald-500"
               >
                 {timeOptions.slice(0, -1).map((minutes) => (
                   <option key={minutes} value={formatTimelineTime(minutes)}>
@@ -2133,12 +2142,12 @@ function EventSheet({
                 ))}
               </select>
             </label>
-            <label className="block">
+            <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
               <span className="text-xs font-semibold text-zinc-600">終了時刻</span>
               <select
                 value={draft.item.endTime}
                 onChange={(event) => onChange("endTime", event.target.value)}
-                className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold outline-none focus:border-zinc-900"
+                className="mt-2 h-12 w-full rounded-xl border border-zinc-100 bg-white px-3 text-sm font-semibold tabular-nums outline-none focus:border-emerald-500"
               >
                 {timeOptions
                   .filter((minutes) => minutes > startMinutes)
@@ -2151,42 +2160,49 @@ function EventSheet({
             </label>
           </div>
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">
-              コンテンツ名
+          <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
+            <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
+              <span>コンテンツ名</span>
+              <span className="text-emerald-700">必須</span>
             </span>
             <input
               value={draft.item.contentName}
               onChange={(event) => onChange("contentName", event.target.value)}
-              placeholder="ベーカリー"
-              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+              placeholder="例：サウナ、ベーカリー、ランニング"
+              className="mt-2 h-12 w-full rounded-xl border border-zinc-100 bg-white px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500"
             />
           </label>
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">場所名</span>
+          <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
+            <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
+              <span>場所名</span>
+              <span className="text-emerald-700">必須</span>
+            </span>
             <input
               value={draft.item.placeName ?? ""}
               onChange={(event) => onChange("placeName", event.target.value)}
-              placeholder="Truffle BAKERY 中目黒店"
-              className="mt-1.5 h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+              placeholder="例：文化浴泉、Truffle BAKERY 中目黒店"
+              className="mt-2 h-12 w-full rounded-xl border border-zinc-100 bg-white px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500"
             />
           </label>
 
           {fieldError ? (
-            <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
+            <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
               {fieldError}
             </p>
           ) : null}
 
-          <label className="block">
-            <span className="text-xs font-semibold text-zinc-600">コメント</span>
+          <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
+            <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
+              <span>コメント</span>
+              <span className="text-zinc-400">任意</span>
+            </span>
             <textarea
               value={draft.item.comment}
               onChange={(event) => onChange("comment", event.target.value)}
-              placeholder="メモや補足を入力"
+              placeholder="メモやおすすめポイントを入力"
               rows={4}
-              className="mt-1.5 w-full resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm leading-6 outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+              className="mt-2 w-full resize-none rounded-xl border border-zinc-100 bg-white px-3 py-3 text-sm leading-6 outline-none placeholder:text-zinc-400 focus:border-emerald-500"
             />
           </label>
         </div>
@@ -2195,14 +2211,14 @@ function EventSheet({
           <button
             type="button"
             onClick={onCancel}
-            className="h-12 rounded-lg border border-zinc-200 bg-white text-sm font-semibold text-zinc-700"
+            className="h-12 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 active:bg-zinc-50"
           >
             キャンセル
           </button>
           <button
             type="button"
             onClick={onSave}
-            className="h-12 rounded-lg bg-zinc-950 text-sm font-semibold text-white"
+            className="h-12 rounded-xl bg-emerald-700 text-sm font-semibold text-white active:bg-emerald-800"
           >
             保存
           </button>
