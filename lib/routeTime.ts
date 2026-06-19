@@ -30,8 +30,8 @@ export function parseDurationMinutes(value?: string | number | null) {
   const plainNumber = text.match(/^(\d+)$/);
   if (plainNumber) return Number(plainNumber[1]);
 
-  const hourMatch = text.match(/(\d+)\s*(?:時間|h|hour|hours)/);
-  const minuteMatch = text.match(/(\d+)\s*(?:分|m|min|mins|minute|minutes)/);
+  const hourMatch = text.match(/(\d+)\s*(?:時間|hours?|h)/);
+  const minuteMatch = text.match(/(\d+)\s*(?:分|minutes?|mins?|m)/);
   const hours = hourMatch ? Number(hourMatch[1]) : 0;
   const minutes = minuteMatch ? Number(minuteMatch[1]) : 0;
   const total = hours * 60 + minutes;
@@ -40,6 +40,7 @@ export function parseDurationMinutes(value?: string | number | null) {
 }
 
 export function formatRouteDuration(minutes: number) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "時間未設定";
   if (minutes < 60) return `${minutes}分`;
 
   const hours = Math.floor(minutes / 60);
