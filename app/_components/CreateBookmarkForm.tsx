@@ -969,6 +969,24 @@ export function CreateBookmarkForm({
     event.currentTarget.scrollTop = lockedScrollTopRef.current;
   }
 
+  function openNewEvent() {
+    const startTime = "09:00";
+    const endTime = sanitizeEndTime(startTime, "10:00");
+
+    setDraftEvent({
+      index: null,
+      item: {
+        ...emptyContent(),
+        startDate: selectedDate,
+        endDate: selectedDate,
+        startTime,
+        endTime,
+        stayDuration: calculateStayDuration(startTime, endTime) || "60分",
+      },
+    });
+    setFieldError(null);
+  }
+
   function openExistingEvent(index: number) {
     const item = schedule[index];
     if (!item) return;
@@ -1383,9 +1401,19 @@ export function CreateBookmarkForm({
           <span className="w-14" aria-hidden="true" />
         )}
         <h1 className="text-base font-semibold text-zinc-950">
-          {isEdit ? "しおり編集" : "しおり作成"}
+          {currentStep === "schedule" ? "しおり編集" : isEdit ? "しおり編集" : "しおり作成"}
         </h1>
-        <span className="w-14" aria-hidden="true" />
+        {currentStep === "schedule" ? (
+          <button
+            type="button"
+            onClick={handleNextStep}
+            className="w-14 text-right text-sm font-semibold text-emerald-700"
+          >
+            次へ
+          </button>
+        ) : (
+          <span className="w-14" aria-hidden="true" />
+        )}
       </header>
 
       {currentStep === "schedule" && isDatePickerOpen && datePickerPosition
@@ -1416,7 +1444,7 @@ export function CreateBookmarkForm({
           onPointerCancel={handleTimelinePointerCancel}
           onScroll={handleTimelineScroll}
           onOpenExistingEvent={openExistingEvent}
-          onNext={handleNextStep}
+          onOpenNewEvent={openNewEvent}
           submitError={submitError}
         />
       ) : (
@@ -1476,7 +1504,7 @@ function ScheduleEditorStep({
   onPointerCancel,
   onScroll,
   onOpenExistingEvent,
-  onNext,
+  onOpenNewEvent,
   submitError,
 }: {
   scrollerRef: RefObject<HTMLDivElement | null>;
@@ -1490,68 +1518,77 @@ function ScheduleEditorStep({
   onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onScroll: (event: ReactUIEvent<HTMLDivElement>) => void;
   onOpenExistingEvent: (index: number) => void;
-  onNext: () => void;
+  onOpenNewEvent: () => void;
   submitError: string | null;
 }) {
   return (
     <>
-      <section className="min-h-0 flex-1 bg-zinc-50 px-3 py-2">
-        <div className="relative h-full min-h-0">
-          <div className="absolute right-3 top-3 z-10">
+      <section className="min-h-0 flex-1 overflow-hidden bg-white px-4 py-3">
+        <div className="mx-auto flex h-full max-w-[430px] min-w-0 flex-col gap-3">
+          <div className="shrink-0">
+            <p className="text-sm font-semibold text-zinc-950">時間表</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              開始時間を長押しし、そのまま下にドラッグして時間を設定
+            </p>
+          </div>
+
+          <div className="relative min-h-0 flex-1">
+            <div className="absolute right-3 top-3 z-10">
             {isCreatingSchedule ? (
-              <span className="rounded-full bg-zinc-900 px-2.5 py-1 text-xs font-semibold text-white">
+              <span className="rounded-full bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
                 長押し中
               </span>
             ) : null}
-          </div>
+            </div>
 
-          <div
-            ref={scrollerRef}
-            data-long-press-pending={isLongPressPending || undefined}
-            data-creating-schedule={isCreatingSchedule || undefined}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerCancel}
-            onScroll={onScroll}
-            onContextMenu={(event) => event.preventDefault()}
-            className={`h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain rounded-lg border border-zinc-200 bg-white shadow-sm ${
-              isCreatingSchedule ? "touch-none select-none" : "touch-pan-y"
-            }`}
-          >
             <div
-              className="relative w-full"
-              style={{ height: timelineEnd * pixelsPerMinute }}
+              ref={scrollerRef}
+              data-long-press-pending={isLongPressPending || undefined}
+              data-creating-schedule={isCreatingSchedule || undefined}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerCancel}
+              onScroll={onScroll}
+              onContextMenu={(event) => event.preventDefault()}
+              className={`h-full min-h-0 w-full min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain rounded-2xl border border-emerald-100 bg-zinc-50 shadow-sm ${
+                isCreatingSchedule ? "touch-none select-none" : "touch-pan-y"
+              }`}
             >
-              <TimelineGrid />
+              <div
+                className="relative w-full min-w-0"
+                style={{ height: timelineEnd * pixelsPerMinute }}
+              >
+                <TimelineGrid />
 
-              {sortedSchedule.map(({ item, index }) => (
-                <TimelineEventBlock
-                  key={`${index}-${item.startTime}-${item.contentName}`}
-                  item={item}
-                  onClick={() => onOpenExistingEvent(index)}
-                />
-              ))}
+                {sortedSchedule.map(({ item, index }) => (
+                  <TimelineEventBlock
+                    key={`${index}-${item.startTime}-${item.contentName}`}
+                    item={item}
+                    onClick={() => onOpenExistingEvent(index)}
+                  />
+                ))}
 
-              {dragSelection ? (
-                <SelectionBlock selection={dragSelection} />
-              ) : null}
+                {dragSelection ? (
+                  <SelectionBlock selection={dragSelection} />
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
       </section>
-      <div className="shrink-0 border-t border-zinc-100 bg-white px-4 py-3">
+      <div className="shrink-0 border-t border-zinc-100 bg-white px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
         {submitError ? (
-          <p className="mb-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
+          <p className="mx-auto mb-3 max-w-[430px] rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
             {submitError}
           </p>
         ) : null}
         <button
           type="button"
-          onClick={onNext}
-          className="h-12 w-full rounded-lg bg-zinc-950 text-sm font-semibold text-white"
+          onClick={onOpenNewEvent}
+          className="mx-auto flex h-12 w-full max-w-[430px] items-center justify-center rounded-xl border border-emerald-300 bg-white text-sm font-semibold text-emerald-700 active:bg-emerald-50"
         >
-          次へ
+          ＋ スケジュールを追加
         </button>
       </div>
     </>
@@ -1855,22 +1892,23 @@ function TimelineGrid() {
       {halfHours.map((minutes) => (
         <div
           key={`half-${minutes}`}
-          className="absolute left-[72px] right-0 border-t border-dashed border-zinc-100"
+          className="absolute left-[68px] right-0 border-t border-dashed border-emerald-100/70"
           style={{ top: minutes * pixelsPerMinute }}
         />
       ))}
       {hours.map((hour) => (
         <div
           key={hour}
-          className="absolute left-0 right-0 border-t border-zinc-200"
+          className="absolute left-0 right-0 border-t border-zinc-200/80"
           style={{ top: hour * pixelsPerHour }}
         >
-          <div className="absolute left-0 top-[-10px] w-[64px] pr-2 text-right text-xs font-semibold tabular-nums text-zinc-500">
+          <div className="absolute left-0 top-[-10px] w-[58px] pr-2 text-right text-[11px] font-semibold tabular-nums text-zinc-500">
             {formatTimelineTime(hour * 60)}
           </div>
+          <span className="absolute left-[62px] top-[-4px] h-2 w-2 rounded-full bg-emerald-500" />
         </div>
       ))}
-      <div className="absolute bottom-0 left-[72px] right-0 border-t border-zinc-200" />
+      <div className="absolute bottom-0 left-[68px] right-0 border-t border-zinc-200/80" />
     </>
   );
 }
@@ -1894,23 +1932,24 @@ function TimelineEventBlock({
       type="button"
       data-event-block
       onClick={onClick}
-      className="absolute left-[76px] right-3 overflow-hidden rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-left shadow-sm transition active:scale-[0.99]"
+      className="absolute left-[72px] right-3 min-w-0 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50 py-2 pl-4 pr-3 text-left shadow-sm transition active:scale-[0.99]"
       style={{ top, height }}
     >
-      <p className="truncate text-sm font-semibold leading-5 text-teal-950">
-        {item.contentName || "名称未入力"}
-      </p>
-      <p className="text-xs font-semibold tabular-nums text-teal-700">
+      <span className="absolute bottom-2 left-2 top-2 w-1 rounded-full bg-emerald-500" />
+      <p className="truncate text-xs font-semibold tabular-nums text-emerald-700">
         {item.startTime}〜{formatTimelineTime(endMinutes)}
       </p>
+      <p className="mt-0.5 truncate text-sm font-semibold leading-5 text-zinc-950">
+        {item.contentName || "名称未入力"}
+      </p>
       {item.placeName?.trim() ? (
-        <p className="mt-0.5 truncate text-xs font-medium text-teal-900/80">
+        <p className="mt-0.5 truncate text-xs font-medium text-zinc-700">
           {item.placeName}
         </p>
       ) : null}
       {item.comment ? (
         <p
-          className={`mt-0.5 text-xs leading-5 text-teal-900/75 ${
+          className={`mt-0.5 text-xs leading-5 text-zinc-500 ${
             compact ? "truncate" : "line-clamp-2"
           }`}
         >
@@ -1930,14 +1969,14 @@ function SelectionBlock({ selection }: { selection: DragSelection }) {
 
   return (
     <div
-      className="pointer-events-none absolute left-[76px] right-3 rounded-lg border border-zinc-900 bg-zinc-900/12 px-3 py-2 shadow-sm ring-4 ring-zinc-900/5"
+      className="pointer-events-none absolute left-[72px] right-3 rounded-xl border border-emerald-500 bg-emerald-100/70 px-3 py-2 shadow-sm ring-4 ring-emerald-500/10"
       style={{ top, height }}
     >
-      <p className="text-sm font-semibold tabular-nums text-zinc-950">
+      <p className="text-sm font-semibold tabular-nums text-emerald-900">
         {formatTimelineTime(selection.startMinutes)}〜
         {formatTimelineTime(selection.endMinutes)}
       </p>
-      <p className="text-xs font-semibold text-zinc-700">
+      <p className="text-xs font-semibold text-emerald-700">
         {formatDuration(selection.endMinutes - selection.startMinutes)}
       </p>
     </div>
