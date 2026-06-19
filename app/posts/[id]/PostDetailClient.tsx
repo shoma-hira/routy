@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "../../_components/AppShell";
-import { posts as mockPosts } from "../../_data/posts";
 import { supabase } from "@/lib/supabase";
 import {
   getCurrentUserId,
@@ -14,13 +13,19 @@ import {
   toggleSavedPost,
 } from "@/lib/savedPosts";
 
-const fallbackCoverImage = mockPosts[0]?.coverImage ?? "/globe.svg";
 const slideCount = 2;
+
+type ProfileRole = "user" | "admin";
 
 type PostRow = {
   id: string;
   user_id: string;
   title: string;
+  area: string | null;
+  transport_type: string | null;
+  companion_type: string | null;
+  budget: number | null;
+  caption: string | null;
   cover_image_url: string | null;
   is_published: boolean;
   created_at: string;
@@ -30,17 +35,23 @@ type ProfileRow = {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
+  role?: ProfileRole | null;
 };
 
 type ScheduleItemRow = {
   id: string;
   post_id: string;
-  sort_order: number | null;
-  time: string | null;
-  spot_name: string | null;
-  stay_duration: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  content_name: string | null;
+  place_name: string | null;
   comment: string | null;
   image_url: string | null;
+  sort_order: number | null;
+  time: string | null;
+  stay_duration: string | number | null;
+  spot_name: string | null;
+  created_at: string | null;
 };
 
 type DetailState = {
@@ -53,26 +64,158 @@ function getErrorMessage(error: unknown) {
   return getReadableSupabaseError(error, "投稿詳細の取得に失敗しました。");
 }
 
-function getAuthorName(profile: ProfileRow | null) {
-  return profile?.display_name?.trim() || "ROUTY User";
+function normalizeProfileRole(value: unknown): ProfileRole {
+  return value === "admin" ? "admin" : "user";
 }
 
-function getCaption() {
-  return "キャプションはありません";
+function isMissingRoleColumn(error: unknown) {
+  const message = getReadableSupabaseError(error, "").toLowerCase();
+
+  return message.includes("role") && message.includes("column");
 }
 
-function formatDate(value: string) {
-  const date = new Date(value);
+function toMinutes(time?: string | null) {
+  if (!time) return null;
 
-  if (Number.isNaN(date.getTime())) {
-    return "";
+  const [hourText, minuteText] = time.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+
+  if (
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute) ||
+    hour < 0 ||
+    hour > 26 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
   }
 
-  return new Intl.DateTimeFormat("ja-JP", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(date);
+  return hour * 60 + minute;
+}
+
+function parseDurationMinutes(value?: string | number | null) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const text = String(value);
+  const hourMatch = text.match(/(\d+)\s*時間/);
+  const minuteMatch = text.match(/(\d+)\s*分/);
+  const plainNumber = text.match(/^\s*(\d+)\s*$/);
+  const hours = hourMatch ? Number(hourMatch[1]) : 0;
+  const minutes = minuteMatch
+    ? Number(minuteMatch[1])
+    : plainNumber
+      ? Number(plainNumber[1])
+      : 0;
+  const total = hours * 60 + minutes;
+
+  return total > 0 ? total : null;
+}
+
+function formatTimelineTime(minutes: number) {
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function formatDuration(minutes: number) {
+  if (minutes < 60) return `${minutes}分`;
+
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+
+  return rest ? `${hours}時間${rest}分` : `${hours}時間`;
+}
+
+function getStartMinutes(item: ScheduleItemRow) {
+  return toMinutes(item.start_time ?? item.time);
+}
+
+function getEndMinutes(item: ScheduleItemRow) {
+  const startMinutes = getStartMinutes(item);
+  if (startMinutes === null) return null;
+
+  const endMinutes = toMinutes(item.end_time);
+  if (endMinutes !== null && endMinutes > startMinutes) return endMinutes;
+
+  const durationMinutes = parseDurationMinutes(item.stay_duration);
+  if (durationMinutes === null) return null;
+
+  return startMinutes + durationMinutes;
+}
+
+function getDurationLabel(items: ScheduleItemRow[]) {
+  let firstStart: number | null = null;
+  let lastEnd: number | null = null;
+
+  items.forEach((item) => {
+    const startMinutes = getStartMinutes(item);
+    const endMinutes = getEndMinutes(item);
+    if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+      return;
+    }
+
+    firstStart = firstStart === null ? startMinutes : Math.min(firstStart, startMinutes);
+    lastEnd = lastEnd === null ? endMinutes : Math.max(lastEnd, endMinutes);
+  });
+
+  if (firstStart === null || lastEnd === null || lastEnd <= firstStart) {
+    return null;
+  }
+
+  return formatDuration(lastEnd - firstStart);
+}
+
+function getTimeRangeLabel(item: ScheduleItemRow) {
+  const startMinutes = getStartMinutes(item);
+  if (startMinutes === null) return "時刻未設定";
+
+  const endMinutes = getEndMinutes(item);
+  const startLabel = formatTimelineTime(startMinutes);
+
+  if (endMinutes === null || endMinutes <= startMinutes) {
+    return startLabel;
+  }
+
+  return `${startLabel}〜${formatTimelineTime(endMinutes)}`;
+}
+
+function getTransportLabel(value?: string | null) {
+  if (value === "walking" || value === "walk") return "徒歩中心";
+  if (value === "public_transport" || value === "train") return "電車あり";
+  if (value === "car") return "車あり";
+
+  return null;
+}
+
+function getCompanionLabel(value?: string | null) {
+  if (value === "solo") return "1人";
+  if (value === "friends") return "友達";
+  if (value === "date") return "デート";
+  if (value === "family") return "家族";
+
+  return null;
+}
+
+function getBudgetLabel(value?: number | null) {
+  if (value === null || value === undefined) return null;
+
+  return value.toLocaleString("ja-JP");
+}
+
+function getContentName(item: ScheduleItemRow) {
+  return item.content_name?.trim() || item.spot_name?.trim() || "名称未設定";
+}
+
+function sortScheduleItems(items: ScheduleItemRow[]) {
+  return [...items].sort((a, b) => {
+    const startDiff = (getStartMinutes(a) ?? 0) - (getStartMinutes(b) ?? 0);
+    if (startDiff !== 0) return startDiff;
+
+    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  });
 }
 
 export function PostDetailClient({ postId }: { postId: string }) {
@@ -86,9 +229,13 @@ export function PostDetailClient({ postId }: { postId: string }) {
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<ProfileRole>("user");
   const [notFound, setNotFound] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const isOwner = Boolean(userId && detail?.post.user_id === userId);
+  const isAdmin = currentUserRole === "admin";
+  const canDelete = Boolean(detail && userId && (isOwner || isAdmin));
+  const isAdminDeletingOtherUserPost = Boolean(detail && isAdmin && !isOwner);
 
   useEffect(() => {
     let isMounted = true;
@@ -100,9 +247,29 @@ export function PostDetailClient({ postId }: { postId: string }) {
 
       try {
         const currentUserId = await getCurrentUserId();
+        let currentRole: ProfileRole = "user";
+        const currentProfileResult = await supabase
+          .from("profiles")
+          .select("id,role")
+          .eq("id", currentUserId)
+          .maybeSingle();
+
+        if (
+          currentProfileResult.error &&
+          !isMissingRoleColumn(currentProfileResult.error)
+        ) {
+          throw currentProfileResult.error;
+        }
+
+        if (!currentProfileResult.error) {
+          currentRole = normalizeProfileRole(currentProfileResult.data?.role);
+        }
+
         const { data: post, error: postError } = await supabase
           .from("posts")
-          .select("id,user_id,title,cover_image_url,is_published,created_at")
+          .select(
+            "id,user_id,title,area,transport_type,companion_type,budget,caption,cover_image_url,is_published,created_at",
+          )
           .eq("id", postId)
           .maybeSingle();
 
@@ -118,7 +285,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
           return;
         }
 
-        if (!post.is_published && post.user_id !== currentUserId) {
+        if (!post.is_published && post.user_id !== currentUserId && currentRole !== "admin") {
           if (isMounted) {
             setDetail(null);
             setNotFound(true);
@@ -135,11 +302,11 @@ export function PostDetailClient({ postId }: { postId: string }) {
           supabase
             .from("schedule_items")
             .select(
-              "id,post_id,sort_order,time,spot_name,stay_duration,comment,image_url",
+              "id,post_id,start_time,end_time,content_name,place_name,comment,image_url,sort_order,time,stay_duration,spot_name,created_at",
             )
             .eq("post_id", post.id)
-            .order("time", { ascending: true })
-            .order("sort_order", { ascending: true }),
+            .order("sort_order", { ascending: true })
+            .order("created_at", { ascending: true }),
         ]);
 
         if (profileResult.error) {
@@ -153,7 +320,9 @@ export function PostDetailClient({ postId }: { postId: string }) {
         const nextDetail = {
           post: post as PostRow,
           profile: profileResult.data as ProfileRow | null,
-          scheduleItems: (scheduleResult.data ?? []) as ScheduleItemRow[],
+          scheduleItems: sortScheduleItems(
+            (scheduleResult.data ?? []) as ScheduleItemRow[],
+          ),
         };
         const nextIsSaved = await isPostSaved(currentUserId, post.id);
 
@@ -164,6 +333,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
 
         if (isMounted) {
           setUserId(currentUserId);
+          setCurrentUserRole(currentRole);
           setIsSaved(nextIsSaved);
           setDetail(nextDetail);
         }
@@ -235,13 +405,15 @@ export function PostDetailClient({ postId }: { postId: string }) {
   }
 
   async function handleDeletePost() {
-    if (!userId || !detail || !isOwner) {
+    if (!userId || !detail || !canDelete) {
       setSaveErrorMessage("この投稿を削除する権限がありません。");
       return;
     }
 
     const confirmed = window.confirm(
-      "この投稿を削除しますか？この操作は取り消せません。",
+      isAdminDeletingOtherUserPost
+        ? "管理者権限でこの投稿を削除しますか？\n投稿者本人の投稿も削除され、元に戻せません。"
+        : "この投稿を削除しますか？\n削除後は元に戻せません。",
     );
 
     if (!confirmed) {
@@ -256,7 +428,6 @@ export function PostDetailClient({ postId }: { postId: string }) {
         .from("posts")
         .delete()
         .eq("id", detail.post.id)
-        .eq("user_id", userId)
         .select("id")
         .maybeSingle();
 
@@ -269,7 +440,8 @@ export function PostDetailClient({ postId }: { postId: string }) {
       }
 
       console.log("ROUTY delete post success", { postId: detail.post.id });
-      router.push("/mypage");
+      window.alert("投稿を削除しました。");
+      router.push("/home");
     } catch (error) {
       console.error("ROUTY delete post failed", error);
       setSaveErrorMessage(
@@ -286,21 +458,27 @@ export function PostDetailClient({ postId }: { postId: string }) {
           戻る
         </Link>
         <div className="flex items-center gap-3">
-          {isOwner ? (
+          {canDelete ? (
             <>
-              <Link
-                href={`/bookmarks/${postId}/edit`}
-                className="text-sm font-semibold text-zinc-950"
-              >
-                編集
-              </Link>
+              {isOwner ? (
+                <Link
+                  href={`/bookmarks/${postId}/edit`}
+                  className="text-sm font-semibold text-zinc-950"
+                >
+                  編集
+                </Link>
+              ) : null}
               <button
                 type="button"
                 onClick={handleDeletePost}
                 disabled={isDeleting}
                 className="text-sm font-semibold text-red-600 disabled:cursor-not-allowed disabled:text-zinc-400"
               >
-                {isDeleting ? "削除中..." : "削除"}
+                {isDeleting
+                  ? "削除中..."
+                  : isAdminDeletingOtherUserPost
+                    ? "管理者として削除"
+                    : "削除"}
               </button>
             </>
           ) : null}
@@ -313,7 +491,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
             }`}
             aria-label={isSaved ? "保存を解除" : "投稿を保存"}
           >
-            ★
+            {isSaved ? "保存済み" : "保存"}
           </button>
         </div>
       </header>
@@ -333,7 +511,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
           投稿が見つかりません
         </div>
       ) : (
-        <article className="bg-white pb-28">
+        <article className="bg-zinc-50 pb-28">
           {saveErrorMessage ? (
             <div className="px-4 pt-4">
               <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700">
@@ -345,36 +523,12 @@ export function PostDetailClient({ postId }: { postId: string }) {
             <div
               ref={scrollerRef}
               onScroll={handleScroll}
-              className="flex touch-pan-x snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="flex touch-pan-y snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               aria-label="投稿詳細スライド"
             >
-              <CoverSlide detail={detail} />
-              <ScheduleSlide
-                title="タイムライン"
-                page="2/2"
-                items={detail.scheduleItems}
-                emptyMessage="スケジュールが登録されていません"
-              />
+              <OverviewSlide detail={detail} />
+              <TimelineSlide items={detail.scheduleItems} />
             </div>
-
-            <button
-              type="button"
-              onClick={() => goToSlide(activeIndex - 1)}
-              disabled={activeIndex === 0}
-              aria-label="前のスライド"
-              className="absolute left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-lg font-semibold text-zinc-950 shadow-sm disabled:hidden"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              onClick={() => goToSlide(activeIndex + 1)}
-              disabled={activeIndex === slideCount - 1}
-              aria-label="次のスライド"
-              className="absolute right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-lg font-semibold text-zinc-950 shadow-sm disabled:hidden"
-            >
-              ›
-            </button>
 
             <div className="flex justify-center gap-1.5 py-3">
               {Array.from({ length: slideCount }, (_, index) => (
@@ -390,114 +544,135 @@ export function PostDetailClient({ postId }: { postId: string }) {
               ))}
             </div>
           </section>
-
-          <CaptionSection detail={detail} />
         </article>
       )}
     </AppShell>
   );
 }
 
-function CoverSlide({ detail }: { detail: DetailState }) {
+function OverviewSlide({ detail }: { detail: DetailState }) {
+  const post = detail.post;
+  const summaryLabels = [
+    getTransportLabel(post.transport_type),
+    getDurationLabel(detail.scheduleItems),
+    getBudgetLabel(post.budget),
+    getCompanionLabel(post.companion_type),
+  ].filter(Boolean) as string[];
+  const caption = post.caption?.trim();
+
   return (
-    <div className="relative h-[520px] w-full min-w-full shrink-0 snap-center overflow-hidden bg-zinc-100">
-      <Image
-        src={detail.post.cover_image_url?.trim() || fallbackCoverImage}
-        alt={`${detail.post.title}の表紙画像`}
-        fill
-        unoptimized
-        priority
-        sizes="min(100vw, 430px)"
-        className="object-cover"
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/5 to-black/65" />
-      <div className="absolute right-4 top-4">
-        <span className="rounded-full bg-black/45 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur">
-          1/2
-        </span>
-      </div>
-      <div className="absolute bottom-5 left-4 right-4">
-        <div className="mb-3 flex items-center gap-2">
-          <span className="text-xs font-semibold text-white drop-shadow">
-            {getAuthorName(detail.profile)}
-          </span>
+    <section className="min-h-[calc(100dvh-92px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white px-4 pb-6 pt-4">
+      <div className="mx-auto max-w-[430px]">
+        <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-zinc-100">
+          {post.cover_image_url?.trim() ? (
+            <Image
+              src={post.cover_image_url.trim()}
+              alt={`${post.title}のサムネイル画像`}
+              fill
+              unoptimized
+              priority
+              sizes="min(100vw, 430px)"
+              className="object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center px-4 text-sm font-semibold text-zinc-400">
+              画像未設定
+            </div>
+          )}
         </div>
-        <h1 className="text-2xl font-semibold leading-8 text-white drop-shadow">
-          {detail.post.title}
-        </h1>
+
+        <div className="mt-5">
+          <h1 className="text-2xl font-semibold leading-8 text-zinc-950">
+            {post.title}
+          </h1>
+          {post.area?.trim() ? (
+            <p className="mt-2 text-sm font-medium text-zinc-500">
+              {post.area.trim()}
+            </p>
+          ) : null}
+
+          {summaryLabels.length > 0 ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {summaryLabels.map((label) => (
+                <span
+                  key={label}
+                  className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-700"
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {caption ? (
+            <p className="mt-6 whitespace-pre-wrap text-sm leading-7 text-zinc-800">
+              {caption}
+            </p>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
 
-function ScheduleSlide({
-  title,
-  page,
-  items,
-  emptyMessage,
-}: {
-  title: string;
-  page: string;
-  items: ScheduleItemRow[];
-  emptyMessage: string;
-}) {
+function TimelineSlide({ items }: { items: ScheduleItemRow[] }) {
   return (
-    <div className="h-[520px] w-full min-w-full shrink-0 snap-center overflow-y-auto overscroll-contain bg-white px-5 py-5">
-      <div className="mb-7 flex items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold text-zinc-950">{title}</h2>
-        <span className="shrink-0 rounded-full bg-zinc-900 px-2.5 py-1 text-xs font-semibold text-white">
-          {page}
-        </span>
-      </div>
+    <section className="min-h-[calc(100dvh-92px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white px-4 pb-6 pt-5">
+      <div className="mx-auto max-w-[430px]">
+        <h2 className="text-xl font-semibold text-zinc-950">タイムライン</h2>
 
-      {items.length === 0 ? (
-        <p className="rounded-2xl bg-zinc-50 px-4 py-5 text-sm font-medium text-zinc-500">
-          {emptyMessage}
-        </p>
-      ) : (
-        <div className="relative">
-          <div className="absolute left-[7px] top-3 h-[calc(100%-24px)] w-px bg-zinc-200" />
-          <div className="space-y-7">
-            {items.map((item, index) => (
-              <TimelineItem key={item.id || `${item.post_id}-${index}`} item={item} />
-            ))}
+        {items.length === 0 ? (
+          <p className="mt-5 rounded-xl bg-zinc-50 px-4 py-5 text-sm font-medium text-zinc-500">
+            スケジュールが登録されていません
+          </p>
+        ) : (
+          <div className="relative mt-6">
+            <div className="absolute left-[7px] top-3 h-[calc(100%-24px)] w-px bg-zinc-200" />
+            <div className="space-y-6">
+              {items.map((item, index) => (
+                <TimelineItem key={item.id || `${item.post_id}-${index}`} item={item} />
+              ))}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </section>
   );
 }
 
 function TimelineItem({ item }: { item: ScheduleItemRow }) {
+  const placeName = item.place_name?.trim();
+  const comment = item.comment?.trim();
+  const contentName = getContentName(item);
+
   return (
-    <div className="grid grid-cols-[16px_58px_1fr] gap-3">
-      <div className="relative pt-1.5">
+    <div className="grid grid-cols-[16px_1fr] gap-3">
+      <div className="relative pt-2">
         <span className="relative z-10 block h-3.5 w-3.5 rounded-full border-[3px] border-white bg-zinc-900 shadow-[0_0_0_1px_rgba(24,24,27,0.18)]" />
       </div>
 
-      <p className="pt-0.5 text-sm font-semibold leading-6 text-zinc-700">
-        {item.time || "--:--"}
-      </p>
-
-      <div className="min-w-0 rounded-2xl bg-zinc-50 px-4 py-3">
-        <h3 className="text-base font-semibold leading-6 text-zinc-950">
-          {item.spot_name || "スポット未設定"}
+      <div className="min-w-0 rounded-xl bg-zinc-50 px-4 py-3">
+        <p className="text-xs font-semibold tabular-nums text-zinc-500">
+          {getTimeRangeLabel(item)}
+        </p>
+        <h3 className="mt-1 text-base font-semibold leading-6 text-zinc-950">
+          {contentName}
         </h3>
-        {item.stay_duration ? (
-          <p className="mt-1 text-sm font-medium text-zinc-500">
-            {item.stay_duration}
+        {placeName ? (
+          <p className="mt-1 text-sm font-medium leading-6 text-zinc-700">
+            {placeName}
           </p>
         ) : null}
-        {item.comment ? (
+        {comment ? (
           <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
-            {item.comment}
+            {comment}
           </p>
         ) : null}
         {item.image_url?.trim() ? (
           <div className="relative mt-4 aspect-[4/3] overflow-hidden rounded-xl bg-zinc-100">
             <Image
               src={item.image_url.trim()}
-              alt={`${item.spot_name || "スケジュール"}の写真`}
+              alt={`${contentName}の画像`}
               fill
               unoptimized
               sizes="min(100vw, 430px)"
@@ -507,22 +682,5 @@ function TimelineItem({ item }: { item: ScheduleItemRow }) {
         ) : null}
       </div>
     </div>
-  );
-}
-
-function CaptionSection({ detail }: { detail: DetailState }) {
-  const caption = getCaption();
-  const postedAt = formatDate(detail.post.created_at);
-
-  return (
-    <section className="border-t border-zinc-100 px-5 py-5">
-      <p className="text-sm leading-6 text-zinc-800">
-        <span className="font-semibold text-zinc-950">
-          {getAuthorName(detail.profile)}
-        </span>{" "}
-        {caption}
-      </p>
-      {postedAt ? <p className="mt-4 text-xs text-zinc-400">{postedAt}</p> : null}
-    </section>
   );
 }
