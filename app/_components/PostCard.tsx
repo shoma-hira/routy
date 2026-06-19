@@ -59,19 +59,21 @@ export function PostCard({
         </div>
       </Link>
 
-      <button
-        type="button"
-        onClick={() => onToggleSave?.(post.id)}
-        disabled={post.isSaving || !onToggleSave}
-        aria-label={isSaved ? "保存を解除" : "投稿を保存"}
-        className={`absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border text-xs shadow-sm ${
-          isSaved
-            ? "border-zinc-950 bg-zinc-950 text-white"
-            : "border-white/80 bg-white/95 text-zinc-700"
-        } disabled:cursor-not-allowed disabled:opacity-50`}
-      >
-        {isSaved ? "●" : "○"}
-      </button>
+      {onToggleSave ? (
+        <button
+          type="button"
+          onClick={() => onToggleSave(post.id)}
+          disabled={post.isSaving}
+          aria-label={isSaved ? "保存を解除" : "投稿を保存"}
+          className={`absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border text-xs shadow-sm ${
+            isSaved
+              ? "border-zinc-950 bg-zinc-950 text-white"
+              : "border-white/80 bg-white/95 text-zinc-700"
+          } disabled:cursor-not-allowed disabled:opacity-50`}
+        >
+          {isSaved ? "●" : "○"}
+        </button>
+      ) : null}
 
       <Link href={detailHref} className="block p-2.5">
         <h2 className="line-clamp-2 min-h-[34px] text-[12px] font-semibold leading-[1.45] text-zinc-950">

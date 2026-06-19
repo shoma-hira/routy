@@ -1,33 +1,26 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "../_components/AppShell";
 import { LogoutButton } from "../_components/LogoutButton";
-import { posts as mockPosts } from "../_data/posts";
+import { PostCard, type PostCardPost } from "../_components/PostCard";
 import { supabase } from "@/lib/supabase";
 import {
   getCurrentUserId,
   getReadableSupabaseError,
 } from "@/lib/savedPosts";
 
-const fallbackCoverImage = mockPosts[0]?.coverImage ?? "/globe.svg";
-
 type ActiveTab = "created" | "saved";
-
-type GridPost = {
-  id: string;
-  title: string;
-  coverImage: string;
-  hasCoverImage: boolean;
-  createdAt: string;
-};
 
 type PostRow = {
   id: string;
   user_id: string;
   title: string;
+  area: string | null;
+  transport_type: string | null;
+  companion_type: string | null;
+  budget: number | null;
   cover_image_url: string | null;
   type: string | null;
   created_at: string;
@@ -44,20 +37,18 @@ type SavedPostRow = {
   created_at: string | null;
 };
 
+type ScheduleItemRow = {
+  post_id: string;
+  start_time: string | null;
+  end_time: string | null;
+  time: string | null;
+  stay_duration: string | number | null;
+  sort_order: number | null;
+  created_at: string | null;
+};
+
 function getErrorMessage(error: unknown) {
   return getReadableSupabaseError(error, "投稿を読み込めませんでした");
-}
-
-function toGridPost(row: PostRow): GridPost {
-  const coverImage = row.cover_image_url?.trim();
-
-  return {
-    id: row.id,
-    title: row.title,
-    coverImage: coverImage || fallbackCoverImage,
-    hasCoverImage: Boolean(coverImage),
-    createdAt: row.created_at,
-  };
 }
 
 function getDisplayName(profile: ProfileRow | null) {
@@ -74,11 +65,137 @@ function getInitial(displayName: string) {
   return displayName.trim().charAt(0).toUpperCase() || "R";
 }
 
+function toMinutes(time?: string | null) {
+  if (!time) return null;
+
+  const [hourText, minuteText] = time.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+
+  if (
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute) ||
+    hour < 0 ||
+    hour > 26 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+
+  return hour * 60 + minute;
+}
+
+function parseDurationMinutes(value?: string | number | null) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const text = String(value);
+  const hourMatch = text.match(/(\d+)\s*時間/);
+  const minuteMatch = text.match(/(\d+)\s*分/);
+  const plainNumber = text.match(/^\s*(\d+)\s*$/);
+  const hours = hourMatch ? Number(hourMatch[1]) : 0;
+  const minutes = minuteMatch
+    ? Number(minuteMatch[1])
+    : plainNumber
+      ? Number(plainNumber[1])
+      : 0;
+  const total = hours * 60 + minutes;
+
+  return total > 0 ? total : null;
+}
+
+function formatDuration(minutes: number) {
+  if (minutes < 60) return `${minutes}分`;
+
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+
+  return rest ? `${hours}時間${rest}分` : `${hours}時間`;
+}
+
+function getScheduleEndMinutes(item: ScheduleItemRow, startMinutes: number) {
+  const endMinutes = toMinutes(item.end_time);
+  if (endMinutes !== null && endMinutes > startMinutes) return endMinutes;
+
+  const durationMinutes = parseDurationMinutes(item.stay_duration);
+  if (durationMinutes === null) return null;
+
+  return startMinutes + durationMinutes;
+}
+
+function getDurationLabel(items: ScheduleItemRow[]) {
+  let firstStart: number | null = null;
+  let lastEnd: number | null = null;
+
+  items.forEach((item) => {
+    const startMinutes = toMinutes(item.start_time ?? item.time);
+    if (startMinutes === null) return;
+
+    const endMinutes = getScheduleEndMinutes(item, startMinutes);
+    if (endMinutes === null || endMinutes <= startMinutes) return;
+
+    firstStart = firstStart === null ? startMinutes : Math.min(firstStart, startMinutes);
+    lastEnd = lastEnd === null ? endMinutes : Math.max(lastEnd, endMinutes);
+  });
+
+  if (firstStart === null || lastEnd === null || lastEnd <= firstStart) {
+    return "時間未設定";
+  }
+
+  return formatDuration(lastEnd - firstStart);
+}
+
+function getTransportLabel(value?: string | null) {
+  if (value === "walking" || value === "walk") return "徒歩中心";
+  if (value === "public_transport" || value === "train") return "電車あり";
+  if (value === "car") return "車あり";
+
+  return null;
+}
+
+function getCompanionLabel(value?: string | null) {
+  if (value === "solo") return "1人";
+  if (value === "friends") return "友達";
+  if (value === "date") return "デート";
+  if (value === "family") return "家族";
+
+  return null;
+}
+
+function getBudgetLabel(value?: number | null) {
+  if (value === null || value === undefined) return null;
+
+  return value.toLocaleString("ja-JP");
+}
+
+function toPostCard(post: PostRow, scheduleItems: ScheduleItemRow[]): PostCardPost {
+  return {
+    id: post.id,
+    title: post.title,
+    author: "ROUTY User",
+    area: post.area?.trim() || null,
+    transportLabel: getTransportLabel(post.transport_type),
+    durationLabel: getDurationLabel(scheduleItems),
+    budgetLabel: getBudgetLabel(post.budget),
+    companionLabel: getCompanionLabel(post.companion_type),
+    coverImage: post.cover_image_url?.trim() || null,
+  };
+}
+
+function groupScheduleItemsByPostId(items: ScheduleItemRow[]) {
+  return items.reduce((map, item) => {
+    const postItems = map.get(item.post_id) ?? [];
+    postItems.push(item);
+    map.set(item.post_id, postItems);
+    return map;
+  }, new Map<string, ScheduleItemRow[]>());
+}
+
 export default function MyPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("created");
   const [profile, setProfile] = useState<ProfileRow | null>(null);
-  const [myPosts, setMyPosts] = useState<GridPost[]>([]);
-  const [savedPostList, setSavedPostList] = useState<GridPost[]>([]);
+  const [myPosts, setMyPosts] = useState<PostCardPost[]>([]);
+  const [savedPostList, setSavedPostList] = useState<PostCardPost[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -101,7 +218,9 @@ export default function MyPage() {
             .maybeSingle(),
           supabase
             .from("posts")
-            .select("id,user_id,title,cover_image_url,type,created_at")
+            .select(
+              "id,user_id,title,area,transport_type,companion_type,budget,cover_image_url,type,created_at",
+            )
             .eq("user_id", currentUserId)
             .order("created_at", { ascending: false }),
           supabase
@@ -115,19 +234,19 @@ export default function MyPage() {
         if (postsResult.error) throw postsResult.error;
         if (savedResult.error) throw savedResult.error;
 
-        const createdPosts = ((postsResult.data ?? []) as PostRow[]).map(
-          toGridPost,
-        );
+        const createdPostRows = (postsResult.data ?? []) as PostRow[];
         const savedRows = (savedResult.data ?? []) as SavedPostRow[];
         const savedPostIds = Array.from(
           new Set(savedRows.map((row) => row.post_id).filter(Boolean)),
         );
-        let savedPosts: GridPost[] = [];
+        let savedPostRows: PostRow[] = [];
 
         if (savedPostIds.length > 0) {
           const { data: savedPostData, error: savedPostError } = await supabase
             .from("posts")
-            .select("id,user_id,title,cover_image_url,type,created_at")
+            .select(
+              "id,user_id,title,area,transport_type,companion_type,budget,cover_image_url,type,created_at",
+            )
             .in("id", savedPostIds)
             .eq("is_published", true);
 
@@ -137,11 +256,41 @@ export default function MyPage() {
             ((savedPostData ?? []) as PostRow[]).map((post) => [post.id, post]),
           );
 
-          savedPosts = savedPostIds
+          savedPostRows = savedPostIds
             .map((postId) => savedPostsById.get(postId))
-            .filter((post): post is PostRow => Boolean(post))
-            .map(toGridPost);
+            .filter((post): post is PostRow => Boolean(post));
         }
+
+        const allPostIds = Array.from(
+          new Set(
+            [...createdPostRows, ...savedPostRows]
+              .map((post) => post.id)
+              .filter(Boolean),
+          ),
+        );
+        let scheduleItemsByPostId = new Map<string, ScheduleItemRow[]>();
+
+        if (allPostIds.length > 0) {
+          const { data: scheduleRows, error: scheduleError } = await supabase
+            .from("schedule_items")
+            .select("post_id,start_time,end_time,time,stay_duration,sort_order,created_at")
+            .in("post_id", allPostIds)
+            .order("sort_order", { ascending: true })
+            .order("created_at", { ascending: true });
+
+          if (scheduleError) throw scheduleError;
+
+          scheduleItemsByPostId = groupScheduleItemsByPostId(
+            (scheduleRows ?? []) as ScheduleItemRow[],
+          );
+        }
+
+        const createdPosts = createdPostRows.map((post) =>
+          toPostCard(post, scheduleItemsByPostId.get(post.id) ?? []),
+        );
+        const savedPosts = savedPostRows.map((post) =>
+          toPostCard(post, scheduleItemsByPostId.get(post.id) ?? []),
+        );
 
         console.log("ROUTY my page loaded", {
           userId: currentUserId,
@@ -268,9 +417,9 @@ export default function MyPage() {
               {emptyMessage}
             </p>
           ) : (
-            <div className="grid grid-cols-3 gap-1.5 px-1.5 pt-3">
+            <div className="grid grid-cols-2 gap-3 px-2 pt-4 sm:grid-cols-2 md:grid-cols-3">
               {activePosts.map((post) => (
-                <PostGridCard key={post.id} post={post} />
+                <PostCard key={post.id} post={post} />
               ))}
             </div>
           )}
@@ -302,41 +451,5 @@ function ProfileTab({
         <span className="absolute bottom-0 left-1/2 h-0.5 w-10 -translate-x-1/2 rounded-full bg-zinc-950" />
       ) : null}
     </button>
-  );
-}
-
-function PostGridCard({ post }: { post: GridPost }) {
-  return (
-    <Link
-      href={`/posts/${post.id}`}
-      className="group relative block aspect-[2/3] overflow-hidden rounded-lg bg-zinc-100"
-    >
-      {post.hasCoverImage ? (
-        <Image
-          src={post.coverImage}
-          alt={post.title}
-          fill
-          unoptimized
-          sizes="(max-width: 640px) 33vw, 210px"
-          className="object-cover transition duration-200 group-active:scale-[0.98]"
-        />
-      ) : (
-        <>
-          <Image
-            src={post.coverImage}
-            alt={post.title}
-            fill
-            unoptimized
-            sizes="(max-width: 640px) 33vw, 210px"
-            className="object-cover opacity-25"
-          />
-          <div className="absolute inset-0 flex items-end bg-zinc-900/55 p-2">
-            <p className="line-clamp-4 text-xs font-semibold leading-5 text-white">
-              {post.title}
-            </p>
-          </div>
-        </>
-      )}
-    </Link>
   );
 }
