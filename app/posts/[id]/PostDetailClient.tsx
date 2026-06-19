@@ -451,12 +451,25 @@ export function PostDetailClient({ postId }: { postId: string }) {
     }
   }
 
+  function handleBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+
+    router.push("/home");
+  }
+
   return (
     <AppShell>
       <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-zinc-100 bg-white/95 px-5 backdrop-blur">
-        <Link href="/home" className="text-sm font-medium text-zinc-600">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="text-sm font-medium text-zinc-600"
+        >
           戻る
-        </Link>
+        </button>
         <div className="flex items-center gap-3">
           {canDelete ? (
             <>

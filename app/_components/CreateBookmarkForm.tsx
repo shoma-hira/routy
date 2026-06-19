@@ -1375,9 +1375,13 @@ export function CreateBookmarkForm({
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-zinc-50 pb-[calc(4rem+env(safe-area-inset-bottom))]">
       <header className="z-20 flex h-14 shrink-0 items-center justify-between border-b border-zinc-100 bg-white/95 px-4 backdrop-blur">
-        <Link href={returnHref} className="text-sm font-medium text-zinc-600">
-          戻る
-        </Link>
+        {currentStep === "schedule" ? (
+          <Link href={returnHref} className="text-sm font-medium text-zinc-600">
+            戻る
+          </Link>
+        ) : (
+          <span className="w-14" aria-hidden="true" />
+        )}
         <h1 className="text-base font-semibold text-zinc-950">
           {isEdit ? "しおり編集" : "しおり作成"}
         </h1>
