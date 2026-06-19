@@ -342,7 +342,7 @@ export default function MyPage() {
   }, [myPosts.length, savedPostList.length]);
 
   return (
-    <AppShell contentClassName="max-w-[640px]">
+    <AppShell>
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100 bg-white/95 px-4 py-3 backdrop-blur">
         <h1 className="text-lg font-semibold tracking-normal">マイページ</h1>
         <LogoutButton />
