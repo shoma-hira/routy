@@ -18,8 +18,8 @@ export function BottomNav() {
         {navItems.map((item) => {
           const active =
             item.id === "home"
-                ? pathname === "/home"
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
+              ? pathname === "/home"
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           return (
             <Link

@@ -12,6 +12,12 @@ import {
   isPostSaved,
   toggleSavedPost,
 } from "@/lib/savedPosts";
+import {
+  formatRouteDuration,
+  formatRouteTime,
+  parseDurationMinutes,
+  parseRouteTimeToMinutes,
+} from "@/lib/routeTime";
 
 const slideCount = 2;
 
@@ -74,70 +80,15 @@ function isMissingRoleColumn(error: unknown) {
   return message.includes("role") && message.includes("column");
 }
 
-function toMinutes(time?: string | null) {
-  if (!time) return null;
-
-  const [hourText, minuteText] = time.split(":");
-  const hour = Number(hourText);
-  const minute = Number(minuteText);
-
-  if (
-    !Number.isInteger(hour) ||
-    !Number.isInteger(minute) ||
-    hour < 0 ||
-    hour > 26 ||
-    minute < 0 ||
-    minute > 59
-  ) {
-    return null;
-  }
-
-  return hour * 60 + minute;
-}
-
-function parseDurationMinutes(value?: string | number | null) {
-  if (value === null || value === undefined || value === "") return null;
-
-  const text = String(value);
-  const hourMatch = text.match(/(\d+)\s*時間/);
-  const minuteMatch = text.match(/(\d+)\s*分/);
-  const plainNumber = text.match(/^\s*(\d+)\s*$/);
-  const hours = hourMatch ? Number(hourMatch[1]) : 0;
-  const minutes = minuteMatch
-    ? Number(minuteMatch[1])
-    : plainNumber
-      ? Number(plainNumber[1])
-      : 0;
-  const total = hours * 60 + minutes;
-
-  return total > 0 ? total : null;
-}
-
-function formatTimelineTime(minutes: number) {
-  const hour = Math.floor(minutes / 60);
-  const minute = minutes % 60;
-
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-}
-
-function formatDuration(minutes: number) {
-  if (minutes < 60) return `${minutes}分`;
-
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-
-  return rest ? `${hours}時間${rest}分` : `${hours}時間`;
-}
-
 function getStartMinutes(item: ScheduleItemRow) {
-  return toMinutes(item.start_time ?? item.time);
+  return parseRouteTimeToMinutes(item.start_time ?? item.time);
 }
 
 function getEndMinutes(item: ScheduleItemRow) {
   const startMinutes = getStartMinutes(item);
   if (startMinutes === null) return null;
 
-  const endMinutes = toMinutes(item.end_time);
+  const endMinutes = parseRouteTimeToMinutes(item.end_time);
   if (endMinutes !== null && endMinutes > startMinutes) return endMinutes;
 
   const durationMinutes = parseDurationMinutes(item.stay_duration);
@@ -165,7 +116,7 @@ function getDurationLabel(items: ScheduleItemRow[]) {
     return null;
   }
 
-  return formatDuration(lastEnd - firstStart);
+  return formatRouteDuration(lastEnd - firstStart);
 }
 
 function getTimeRangeLabel(item: ScheduleItemRow) {
@@ -173,13 +124,13 @@ function getTimeRangeLabel(item: ScheduleItemRow) {
   if (startMinutes === null) return "時刻未設定";
 
   const endMinutes = getEndMinutes(item);
-  const startLabel = formatTimelineTime(startMinutes);
+  const startLabel = formatRouteTime(startMinutes);
 
   if (endMinutes === null || endMinutes <= startMinutes) {
     return startLabel;
   }
 
-  return `${startLabel}〜${formatTimelineTime(endMinutes)}`;
+  return `${startLabel}〜${formatRouteTime(endMinutes)}`;
 }
 
 function getTransportLabel(value?: string | null) {
@@ -281,9 +232,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
           .eq("id", postId)
           .maybeSingle();
 
-        if (postError) {
-          throw postError;
-        }
+        if (postError) throw postError;
 
         if (!post) {
           if (isMounted) {
@@ -317,13 +266,8 @@ export function PostDetailClient({ postId }: { postId: string }) {
             .order("created_at", { ascending: true }),
         ]);
 
-        if (profileResult.error) {
-          throw profileResult.error;
-        }
-
-        if (scheduleResult.error) {
-          throw scheduleResult.error;
-        }
+        if (profileResult.error) throw profileResult.error;
+        if (scheduleResult.error) throw scheduleResult.error;
 
         const nextDetail = {
           post: post as PostRow,
@@ -424,9 +368,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
         : "この投稿を削除しますか？\n削除後は元に戻せません。",
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setIsDeleting(true);
     setSaveErrorMessage(null);
@@ -439,9 +381,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
         .select("id")
         .maybeSingle();
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       if (!data?.id) {
         throw new Error("この投稿を削除する権限がありません。");

@@ -10,6 +10,7 @@ import {
   getSavedPostIds,
   toggleSavedPost,
 } from "@/lib/savedPosts";
+import { formatRouteDuration, parseDurationMinutes } from "@/lib/routeTime";
 
 const tags = ["#カフェ巡り", "#週末旅", "#絶景", "#ランチ"];
 
@@ -68,33 +69,6 @@ function toMinutes(time?: string | null) {
   return hour * 60 + minute;
 }
 
-function parseDurationMinutes(value?: string | number | null) {
-  if (value === null || value === undefined || value === "") return null;
-
-  const text = String(value);
-  const hourMatch = text.match(/(\d+)\s*時間/);
-  const minuteMatch = text.match(/(\d+)\s*分/);
-  const plainNumber = text.match(/^\s*(\d+)\s*$/);
-  const hours = hourMatch ? Number(hourMatch[1]) : 0;
-  const minutes = minuteMatch
-    ? Number(minuteMatch[1])
-    : plainNumber
-      ? Number(plainNumber[1])
-      : 0;
-  const total = hours * 60 + minutes;
-
-  return total > 0 ? total : null;
-}
-
-function formatDuration(minutes: number) {
-  if (minutes < 60) return `${minutes}分`;
-
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-
-  return rest ? `${hours}時間${rest}分` : `${hours}時間`;
-}
-
 function getScheduleEndMinutes(item: ScheduleItemRow, startMinutes: number) {
   const endMinutes = toMinutes(item.end_time);
   if (endMinutes !== null && endMinutes > startMinutes) return endMinutes;
@@ -124,7 +98,7 @@ function getDurationLabel(items: ScheduleItemRow[]) {
     return "時間未設定";
   }
 
-  return formatDuration(lastEnd - firstStart);
+  return formatRouteDuration(lastEnd - firstStart);
 }
 
 function getTransportLabel(value?: string | null) {
@@ -194,9 +168,7 @@ export default function HomePage() {
           .eq("is_published", true)
           .order("created_at", { ascending: false });
 
-        if (postsError) {
-          throw postsError;
-        }
+        if (postsError) throw postsError;
 
         const publishedPosts = (postRows ?? []) as PostRow[];
         const savedPostIds = await getSavedPostIds(currentUserId);
@@ -211,9 +183,7 @@ export default function HomePage() {
             .order("sort_order", { ascending: true })
             .order("created_at", { ascending: true });
 
-          if (scheduleError) {
-            throw scheduleError;
-          }
+          if (scheduleError) throw scheduleError;
 
           scheduleItemsByPostId = ((scheduleRows ?? []) as ScheduleItemRow[]).reduce(
             (map, item) => {
@@ -237,9 +207,7 @@ export default function HomePage() {
             .select("id,display_name,avatar_url")
             .in("id", userIds);
 
-          if (profilesError) {
-            throw profilesError;
-          }
+          if (profilesError) throw profilesError;
 
           profilesById = new Map(
             ((profileRows ?? []) as ProfileRow[]).map((profile) => [

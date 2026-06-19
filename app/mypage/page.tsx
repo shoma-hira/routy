@@ -10,6 +10,7 @@ import {
   getCurrentUserId,
   getReadableSupabaseError,
 } from "@/lib/savedPosts";
+import { formatRouteDuration, parseDurationMinutes } from "@/lib/routeTime";
 
 type ActiveTab = "created" | "saved";
 
@@ -48,7 +49,7 @@ type ScheduleItemRow = {
 };
 
 function getErrorMessage(error: unknown) {
-  return getReadableSupabaseError(error, "投稿を読み込めませんでした");
+  return getReadableSupabaseError(error, "投稿を読み込めませんでした。");
 }
 
 function getDisplayName(profile: ProfileRow | null) {
@@ -86,33 +87,6 @@ function toMinutes(time?: string | null) {
   return hour * 60 + minute;
 }
 
-function parseDurationMinutes(value?: string | number | null) {
-  if (value === null || value === undefined || value === "") return null;
-
-  const text = String(value);
-  const hourMatch = text.match(/(\d+)\s*時間/);
-  const minuteMatch = text.match(/(\d+)\s*分/);
-  const plainNumber = text.match(/^\s*(\d+)\s*$/);
-  const hours = hourMatch ? Number(hourMatch[1]) : 0;
-  const minutes = minuteMatch
-    ? Number(minuteMatch[1])
-    : plainNumber
-      ? Number(plainNumber[1])
-      : 0;
-  const total = hours * 60 + minutes;
-
-  return total > 0 ? total : null;
-}
-
-function formatDuration(minutes: number) {
-  if (minutes < 60) return `${minutes}分`;
-
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-
-  return rest ? `${hours}時間${rest}分` : `${hours}時間`;
-}
-
 function getScheduleEndMinutes(item: ScheduleItemRow, startMinutes: number) {
   const endMinutes = toMinutes(item.end_time);
   if (endMinutes !== null && endMinutes > startMinutes) return endMinutes;
@@ -142,7 +116,7 @@ function getDurationLabel(items: ScheduleItemRow[]) {
     return "時間未設定";
   }
 
-  return formatDuration(lastEnd - firstStart);
+  return formatRouteDuration(lastEnd - firstStart);
 }
 
 function getTransportLabel(value?: string | null) {
