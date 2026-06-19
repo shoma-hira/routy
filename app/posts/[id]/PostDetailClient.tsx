@@ -218,6 +218,14 @@ function sortScheduleItems(items: ScheduleItemRow[]) {
   });
 }
 
+function SummaryPill({ children }: { children: string }) {
+  return (
+    <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-100">
+      {children}
+    </span>
+  );
+}
+
 export function PostDetailClient({ postId }: { postId: string }) {
   const router = useRouter();
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -462,50 +470,60 @@ export function PostDetailClient({ postId }: { postId: string }) {
 
   return (
     <AppShell>
-      <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-zinc-100 bg-white/95 px-5 backdrop-blur">
+      <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-emerald-50 bg-white/95 px-4 backdrop-blur">
         <button
           type="button"
           onClick={handleBack}
-          className="text-sm font-medium text-zinc-600"
+          className="h-9 rounded-full px-1 text-sm font-semibold text-emerald-700"
         >
           戻る
         </button>
-        <div className="flex items-center gap-3">
-          {canDelete ? (
-            <>
-              {isOwner ? (
-                <Link
-                  href={`/bookmarks/${postId}/edit`}
-                  className="text-sm font-semibold text-zinc-950"
-                >
-                  編集
-                </Link>
-              ) : null}
-              <button
-                type="button"
-                onClick={handleDeletePost}
-                disabled={isDeleting}
-                className="text-sm font-semibold text-red-600 disabled:cursor-not-allowed disabled:text-zinc-400"
-              >
-                {isDeleting
-                  ? "削除中..."
-                  : isAdminDeletingOtherUserPost
-                    ? "管理者として削除"
-                    : "削除"}
-              </button>
-            </>
-          ) : null}
+        <p className="text-sm font-semibold text-zinc-950">投稿詳細</p>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleToggleSave}
             disabled={isLoading || isSaving || !detail}
-            className={`text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
-              isSaved ? "text-zinc-950" : "text-zinc-400"
+            className={`h-9 rounded-full px-3 text-xs font-semibold ring-1 disabled:cursor-not-allowed disabled:opacity-50 ${
+              isSaved
+                ? "bg-emerald-700 text-white ring-emerald-700"
+                : "bg-emerald-50 text-emerald-800 ring-emerald-100"
             }`}
             aria-label={isSaved ? "保存を解除" : "投稿を保存"}
           >
             {isSaved ? "保存済み" : "保存"}
           </button>
+          {canDelete ? (
+            <details className="relative">
+              <summary className="flex h-9 cursor-pointer list-none items-center rounded-full bg-white px-3 text-xs font-semibold text-zinc-700 ring-1 ring-zinc-200 marker:hidden">
+                メニュー
+              </summary>
+              <div className="absolute right-0 top-11 z-30 w-40 overflow-hidden rounded-xl border border-zinc-100 bg-white py-1 text-sm shadow-lg">
+                {isOwner ? (
+                  <Link
+                    href={`/bookmarks/${postId}/edit`}
+                    className="block px-4 py-2 font-semibold text-zinc-800 active:bg-zinc-50"
+                  >
+                    編集
+                  </Link>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleDeletePost}
+                  disabled={isDeleting}
+                  className="block w-full px-4 py-2 text-left font-semibold text-red-600 disabled:cursor-not-allowed disabled:text-zinc-400 active:bg-red-50"
+                >
+                  {isDeleting
+                    ? "削除中..."
+                    : isAdminDeletingOtherUserPost
+                      ? "管理者として削除"
+                      : "削除"}
+                </button>
+              </div>
+            </details>
+          ) : (
+            <span className="w-16" aria-hidden="true" />
+          )}
         </div>
       </header>
 
@@ -524,7 +542,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
           投稿が見つかりません
         </div>
       ) : (
-        <article className="bg-zinc-50 pb-28">
+        <article className="bg-white pb-28">
           {saveErrorMessage ? (
             <div className="px-4 pt-4">
               <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700">
@@ -540,26 +558,38 @@ export function PostDetailClient({ postId }: { postId: string }) {
               aria-label="投稿詳細スライド"
             >
               <OverviewSlide detail={detail} />
-              <TimelineSlide items={detail.scheduleItems} />
+              <TimelineSlide detail={detail} />
             </div>
 
-            <div className="flex justify-center gap-1.5 py-3">
-              {Array.from({ length: slideCount }, (_, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={() => goToSlide(index)}
-                  aria-label={`${index + 1}枚目を表示`}
-                  className={`h-1.5 rounded-full transition-all ${
-                    activeIndex === index ? "w-5 bg-zinc-900" : "w-1.5 bg-zinc-300"
-                  }`}
-                />
-              ))}
-            </div>
+            <SlideDots activeIndex={activeIndex} onSelect={goToSlide} />
           </section>
         </article>
       )}
     </AppShell>
+  );
+}
+
+function SlideDots({
+  activeIndex,
+  onSelect,
+}: {
+  activeIndex: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <div className="flex justify-center gap-1.5 py-4">
+      {Array.from({ length: slideCount }, (_, index) => (
+        <button
+          key={index}
+          type="button"
+          onClick={() => onSelect(index)}
+          aria-label={`${index + 1}枚目を表示`}
+          className={`h-1.5 rounded-full transition-all ${
+            activeIndex === index ? "w-6 bg-emerald-600" : "w-1.5 bg-emerald-100"
+          }`}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -574,75 +604,99 @@ function OverviewSlide({ detail }: { detail: DetailState }) {
   const caption = post.caption?.trim();
 
   return (
-    <section className="min-h-[calc(100dvh-92px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white px-4 pb-6 pt-4">
-      <div className="mx-auto max-w-[430px]">
-        <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-zinc-100">
+    <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white pb-2">
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-emerald-50">
+        {post.cover_image_url?.trim() ? (
+          <Image
+            src={post.cover_image_url.trim()}
+            alt={`${post.title}のサムネイル画像`}
+            fill
+            unoptimized
+            priority
+            sizes="min(100vw, 430px)"
+            className="object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center px-4 text-sm font-semibold text-emerald-700/55">
+            画像未設定
+          </div>
+        )}
+      </div>
+
+      <div className="px-5 pb-7 pt-5">
+        <h1 className="text-2xl font-semibold leading-8 text-zinc-950">
+          {post.title}
+        </h1>
+        {post.area?.trim() ? (
+          <p className="mt-2 text-sm font-semibold text-emerald-700">
+            {post.area.trim()}
+          </p>
+        ) : null}
+
+        {summaryLabels.length > 0 ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {summaryLabels.map((label) => (
+              <SummaryPill key={label}>{label}</SummaryPill>
+            ))}
+          </div>
+        ) : null}
+
+        {caption ? (
+          <p className="mt-7 whitespace-pre-wrap text-[15px] leading-7 text-zinc-800">
+            {caption}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function TimelineSlide({ detail }: { detail: DetailState }) {
+  const post = detail.post;
+
+  return (
+    <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white px-5 pb-8 pt-5">
+      <div className="flex items-center gap-3">
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-emerald-50">
           {post.cover_image_url?.trim() ? (
             <Image
               src={post.cover_image_url.trim()}
               alt={`${post.title}のサムネイル画像`}
               fill
               unoptimized
-              priority
-              sizes="min(100vw, 430px)"
+              sizes="64px"
               className="object-cover"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center px-4 text-sm font-semibold text-zinc-400">
+            <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-emerald-700/55">
               画像未設定
             </div>
           )}
         </div>
-
-        <div className="mt-5">
-          <h1 className="text-2xl font-semibold leading-8 text-zinc-950">
+        <div className="min-w-0">
+          <p className="line-clamp-2 text-sm font-semibold leading-5 text-zinc-950">
             {post.title}
-          </h1>
+          </p>
           {post.area?.trim() ? (
-            <p className="mt-2 text-sm font-medium text-zinc-500">
+            <p className="mt-1 truncate text-xs font-semibold text-emerald-700">
               {post.area.trim()}
-            </p>
-          ) : null}
-
-          {summaryLabels.length > 0 ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {summaryLabels.map((label) => (
-                <span
-                  key={label}
-                  className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-700"
-                >
-                  {label}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          {caption ? (
-            <p className="mt-6 whitespace-pre-wrap text-sm leading-7 text-zinc-800">
-              {caption}
             </p>
           ) : null}
         </div>
       </div>
-    </section>
-  );
-}
 
-function TimelineSlide({ items }: { items: ScheduleItemRow[] }) {
-  return (
-    <section className="min-h-[calc(100dvh-92px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white px-4 pb-6 pt-5">
-      <div className="mx-auto max-w-[430px]">
+      <div className="mt-5 border-t border-zinc-100 pt-5">
         <h2 className="text-xl font-semibold text-zinc-950">タイムライン</h2>
 
-        {items.length === 0 ? (
+        {detail.scheduleItems.length === 0 ? (
           <p className="mt-5 rounded-xl bg-zinc-50 px-4 py-5 text-sm font-medium text-zinc-500">
             スケジュールが登録されていません
           </p>
         ) : (
           <div className="relative mt-6">
-            <div className="absolute left-[7px] top-3 h-[calc(100%-24px)] w-px bg-zinc-200" />
-            <div className="space-y-6">
-              {items.map((item, index) => (
+            <div className="absolute left-[7px] top-3 h-[calc(100%-24px)] w-px bg-emerald-200" />
+            <div className="space-y-7">
+              {detail.scheduleItems.map((item, index) => (
                 <TimelineItem key={item.id || `${item.post_id}-${index}`} item={item} />
               ))}
             </div>
@@ -656,43 +710,46 @@ function TimelineSlide({ items }: { items: ScheduleItemRow[] }) {
 function TimelineItem({ item }: { item: ScheduleItemRow }) {
   const placeName = item.place_name?.trim();
   const comment = item.comment?.trim();
+  const imageUrl = item.image_url?.trim();
   const contentName = getContentName(item);
 
   return (
     <div className="grid grid-cols-[16px_1fr] gap-3">
       <div className="relative pt-2">
-        <span className="relative z-10 block h-3.5 w-3.5 rounded-full border-[3px] border-white bg-zinc-900 shadow-[0_0_0_1px_rgba(24,24,27,0.18)]" />
+        <span className="relative z-10 block h-3.5 w-3.5 rounded-full border-[3px] border-white bg-emerald-600 shadow-[0_0_0_1px_rgba(5,150,105,0.25)]" />
       </div>
 
-      <div className="min-w-0 rounded-xl bg-zinc-50 px-4 py-3">
-        <p className="text-xs font-semibold tabular-nums text-zinc-500">
+      <div className="min-w-0">
+        <p className="text-xs font-bold tabular-nums text-emerald-700">
           {getTimeRangeLabel(item)}
         </p>
-        <h3 className="mt-1 text-base font-semibold leading-6 text-zinc-950">
-          {contentName}
-        </h3>
-        {placeName ? (
-          <p className="mt-1 text-sm font-medium leading-6 text-zinc-700">
-            {placeName}
-          </p>
-        ) : null}
-        {comment ? (
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
-            {comment}
-          </p>
-        ) : null}
-        {item.image_url?.trim() ? (
-          <div className="relative mt-4 aspect-[4/3] overflow-hidden rounded-xl bg-zinc-100">
-            <Image
-              src={item.image_url.trim()}
-              alt={`${contentName}の画像`}
-              fill
-              unoptimized
-              sizes="min(100vw, 430px)"
-              className="object-cover"
-            />
+        <div className={imageUrl ? "mt-2 grid grid-cols-[1fr_88px] gap-3" : "mt-2"}>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold leading-6 text-zinc-950">
+              {contentName}
+            </h3>
+            {placeName ? (
+              <p className="mt-1 text-sm leading-6 text-zinc-700">{placeName}</p>
+            ) : null}
+            {comment ? (
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-600">
+                {comment}
+              </p>
+            ) : null}
           </div>
-        ) : null}
+          {imageUrl ? (
+            <div className="relative h-24 overflow-hidden rounded-xl bg-zinc-100">
+              <Image
+                src={imageUrl}
+                alt={`${contentName}の画像`}
+                fill
+                unoptimized
+                sizes="88px"
+                className="object-cover"
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
