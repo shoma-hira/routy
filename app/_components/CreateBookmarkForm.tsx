@@ -12,10 +12,13 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import { normalizeArea } from "@/lib/area";
 import { supabase } from "@/lib/supabase";
 
 export type ScheduleContent = {
   contentName: string;
+  contentCategory?: string;
+  contentDetail?: string;
   startDate: string;
   startTime: string;
   endDate: string;
@@ -38,6 +41,8 @@ export type ScheduleContent = {
 };
 export type ScheduleItemInput = {
   contentName?: string | null;
+  contentCategory?: string | null;
+  contentDetail?: string | null;
   startDate?: string | null;
   startTime?: string | null;
   endDate?: string | null;
@@ -142,6 +147,20 @@ const weatherOptions: { value: Exclude<WeatherType, "">; label: string }[] = [
   { value: "rain_ok", label: "雨でもOK" },
   { value: "any", label: "どちらでもOK" },
 ];
+const CONTENT_CATEGORIES = [
+  "グルメ",
+  "サウナ温泉",
+  "観光",
+  "運動",
+  "買い物",
+  "遊び",
+  "イベント",
+  "アウトドア",
+  "その他",
+] as const;
+
+type ContentCategory = (typeof CONTENT_CATEGORIES)[number];
+const contentDetailMaxLength = 20;
 
 const timeOptions = Array.from(
   { length: timelineEnd / stepMinutes + 1 },
@@ -151,6 +170,8 @@ const timeOptions = Array.from(
 function emptyContent(): ScheduleContent {
   return {
     contentName: "",
+    contentCategory: "",
+    contentDetail: "",
     placeName: "",
     startDate: "",
     startTime: "",
@@ -176,6 +197,47 @@ function normalizeSchedule(items?: ScheduleItemInput[]) {
   return source.map(normalizeScheduleItem);
 }
 
+function isContentCategory(value: string): value is ContentCategory {
+  return CONTENT_CATEGORIES.includes(value as ContentCategory);
+}
+
+function sanitizeContentDetail(value?: string | null) {
+  return (value ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, contentDetailMaxLength);
+}
+
+function formatContentName(category?: string | null, detail?: string | null) {
+  const normalizedCategory = (category ?? "").trim();
+  if (!isContentCategory(normalizedCategory)) return "";
+
+  const normalizedDetail = sanitizeContentDetail(detail);
+  return normalizedDetail
+    ? `${normalizedCategory}（${normalizedDetail}）`
+    : normalizedCategory;
+}
+
+function parseContentName(value?: string | null): {
+  category: ContentCategory | "";
+  detail: string;
+} {
+  const text = (value ?? "").trim();
+  if (!text) return { category: "", detail: "" };
+
+  if (isContentCategory(text)) {
+    return { category: text, detail: "" };
+  }
+
+  const match = text.match(/^(.+?)（(.+)）$/);
+  if (match) {
+    const category = match[1].trim();
+    const detail = sanitizeContentDetail(match[2]);
+    if (isContentCategory(category)) {
+      return { category, detail };
+    }
+  }
+
+  return { category: "その他", detail: sanitizeContentDetail(text) };
+}
+
 export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent {
   const rawStartTime = item.start_time ?? item.startTime ?? item.time ?? "";
   const startMinutes = toMinutes(rawStartTime);
@@ -183,6 +245,10 @@ export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent 
   const legacyDuration = item.stay_duration ?? item.stayDurationLegacy;
   const contentName =
     item.content_name ?? item.contentName ?? item.spot_name ?? item.spotName ?? "";
+  const parsedContent = parseContentName(contentName);
+  const contentCategory = item.contentCategory ?? parsedContent.category;
+  const contentDetail = item.contentDetail ?? parsedContent.detail;
+  const normalizedContentName = formatContentName(contentCategory, contentDetail);
   const placeName = item.place_name ?? item.placeName ?? "";
   const hasLegacySpotName = Boolean((item.spot_name ?? item.spotName)?.trim());
   const isLegacyPlaceNameMissing =
@@ -201,7 +267,9 @@ export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent 
   return {
     ...emptyContent(),
     ...item,
-    contentName,
+    contentName: normalizedContentName,
+    contentCategory,
+    contentDetail,
     placeName,
     startTime,
     startDate: item.startDate ?? "",
@@ -450,7 +518,11 @@ function toScheduleRow(
   postId: string,
   index: number,
 ): ScheduleItemRow {
-  const contentName = item.contentName.trim();
+  const parsedContent = parseContentName(item.contentName);
+  const contentName = formatContentName(
+    item.contentCategory || parsedContent.category,
+    item.contentDetail ?? parsedContent.detail,
+  );
   const startTime = item.startTime || null;
   const endTime = item.endTime || null;
   const stayDuration = calculateStayDuration(item.startTime, item.endTime);
@@ -481,18 +553,29 @@ function validateScheduleItemsForStep(items: ScheduleContent[]) {
     return "スケジュールを1件以上追加してください。";
   }
 
-  const invalidContentItem = scheduleToValidate.find(
-    (item) => !item.contentName.trim(),
-  );
+  const invalidContentItem = scheduleToValidate.find((item) => {
+    const parsed = parseContentName(item.contentName);
+    return !(item.contentCategory || parsed.category);
+  });
   if (invalidContentItem) {
-    return "コンテンツ名が未入力の項目があります。項目を開いて入力してください。";
+    return "カテゴリを選択してください";
+  }
+
+  const invalidCategoryItem = scheduleToValidate.find(
+    (item) => {
+      const parsed = parseContentName(item.contentName);
+      return !isContentCategory(item.contentCategory || parsed.category);
+    },
+  );
+  if (invalidCategoryItem) {
+    return "カテゴリを9項目の中から選択してください";
   }
 
   const invalidPlaceItem = scheduleToValidate.find(
     (item) => !item.placeName?.trim() && !allowsMissingPlaceName(item),
   );
   if (invalidPlaceItem) {
-    return "場所名が未入力の項目があります。項目を開いて入力してください。";
+    return "店名施設名が未入力の項目があります。項目を開いて入力してください。";
   }
 
   const invalidTimeItem = scheduleToValidate.find(
@@ -570,7 +653,7 @@ function validatePostMetadata({
 }) {
   if (!title.trim()) return "タイトルを入力してください";
   if (!routeDate) return "日付を選択してください";
-  if (!area.trim()) return "エリアを入力してください";
+  if (!normalizeArea(area)) return "エリアを入力してください";
   if (!transportType) return "移動手段を選択してください";
 
   if (budget.trim()) {
@@ -609,7 +692,7 @@ export function CreateBookmarkForm({
   const [isPublished] = useState(
     initialValue?.isPublished ?? true,
   );
-  const [area, setArea] = useState(initialValue?.area ?? "");
+  const [area, setArea] = useState(normalizeArea(initialValue?.area));
   const [transportType, setTransportType] = useState<TransportType | "">(
     normalizeTransportType(initialValue?.transportType ?? initialValue?.transport_type),
   );
@@ -1026,6 +1109,17 @@ export function CreateBookmarkForm({
         nextItem.endTime = sanitizeEndTime(nextItem.startTime, value);
       }
 
+      if (field === "contentDetail") {
+        nextItem.contentDetail = sanitizeContentDetail(value);
+      }
+
+      if (field === "contentCategory" || field === "contentDetail") {
+        nextItem.contentName = formatContentName(
+          nextItem.contentCategory,
+          nextItem.contentDetail,
+        );
+      }
+
       nextItem.stayDuration = `${getDurationMinutes(nextItem)}分`;
 
       return { ...current, item: nextItem };
@@ -1035,15 +1129,23 @@ export function CreateBookmarkForm({
   function saveDraftEvent() {
     if (!draftEvent) return;
 
-    const contentName = draftEvent.item.contentName.trim();
-    if (!contentName) {
-      setFieldError("コンテンツ名を入力してください。");
+    const category = draftEvent.item.contentCategory?.trim() ?? "";
+    if (!category) {
+      setFieldError("カテゴリを選択してください");
       return;
     }
 
+    if (!isContentCategory(category)) {
+      setFieldError("カテゴリを9項目の中から選択してください");
+      return;
+    }
+
+    const contentDetail = sanitizeContentDetail(draftEvent.item.contentDetail);
+    const contentName = formatContentName(category, contentDetail);
+
     const placeName = draftEvent.item.placeName?.trim() ?? "";
     if (!placeName) {
-      setFieldError("場所名を入力してください。");
+      setFieldError("店名施設名を入力してください。");
       return;
     }
 
@@ -1068,6 +1170,8 @@ export function CreateBookmarkForm({
     const nextItem: ScheduleContent = {
       ...draftEvent.item,
       contentName,
+      contentCategory: category,
+      contentDetail,
       placeName,
       startDate: draftEvent.item.startDate || selectedDate,
       endDate: draftEvent.item.endDate || selectedDate,
@@ -1145,7 +1249,7 @@ export function CreateBookmarkForm({
     console.log(isEdit ? "ROUTY update post" : "ROUTY create post", postValue);
 
     const trimmedTitle = title.trim();
-    const trimmedArea = area.trim();
+    const trimmedArea = normalizeArea(area);
     const trimmedBudget = budget.trim();
     const normalizedBudget = trimmedBudget ? Number(trimmedBudget) : null;
     const trimmedCaption = caption.trim();
@@ -1239,7 +1343,7 @@ export function CreateBookmarkForm({
 
         if (scheduleError) throw scheduleError;
 
-        router.push(`/posts/${postId}`);
+        router.push("/home");
         return;
       }
 
@@ -1756,9 +1860,12 @@ function PostMetadataStep({
             <input
               value={area}
               onChange={(event) => onAreaChange(event.target.value)}
-              placeholder="中目黒エリア"
+              placeholder="例：中目黒、鎌倉、横浜"
               className="h-12 w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:bg-white"
             />
+            <p className="mt-2 text-xs font-medium leading-5 text-zinc-500">
+              このルートの代表エリアを1つ入力
+            </p>
           </label>
 
           <label className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
@@ -1925,7 +2032,6 @@ function TimelineEventBlock({
   const endMinutes = Math.min(timelineEnd, startMinutes + duration);
   const top = startMinutes * pixelsPerMinute;
   const height = Math.max(minBlockHeight, (endMinutes - startMinutes) * pixelsPerMinute);
-  const compact = height < 52;
 
   return (
     <button
@@ -1936,26 +2042,12 @@ function TimelineEventBlock({
       style={{ top, height }}
     >
       <span className="absolute bottom-2 left-2 top-2 w-1 rounded-full bg-emerald-500" />
-      <p className="truncate text-xs font-semibold tabular-nums text-emerald-700">
+      <p className="block min-w-0 overflow-hidden truncate text-xs font-bold tabular-nums text-emerald-700">
         {item.startTime}〜{formatTimelineTime(endMinutes)}
       </p>
-      <p className="mt-0.5 truncate text-sm font-semibold leading-5 text-zinc-950">
+      <p className="mt-0.5 block min-w-0 overflow-hidden text-ellipsis text-sm font-bold leading-5 text-zinc-950 line-clamp-2">
         {item.contentName || "名称未入力"}
       </p>
-      {item.placeName?.trim() ? (
-        <p className="mt-0.5 truncate text-xs font-medium text-zinc-700">
-          {item.placeName}
-        </p>
-      ) : null}
-      {item.comment ? (
-        <p
-          className={`mt-0.5 text-xs leading-5 text-zinc-500 ${
-            compact ? "truncate" : "line-clamp-2"
-          }`}
-        >
-          {item.comment}
-        </p>
-      ) : null}
     </button>
   );
 }
@@ -2092,6 +2184,9 @@ function EventSheet({
 }) {
   const startMinutes = toMinutes(draft.item.startTime) ?? timelineStart;
   const duration = getDurationMinutes(draft.item);
+  const parsedContent = parseContentName(draft.item.contentName);
+  const selectedCategory = draft.item.contentCategory || parsedContent.category;
+  const contentDetail = draft.item.contentDetail ?? parsedContent.detail;
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/35 px-0">
@@ -2160,28 +2255,59 @@ function EventSheet({
             </label>
           </div>
 
-          <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
+          <div className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
             <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
               <span>コンテンツ名</span>
               <span className="text-emerald-700">必須</span>
             </span>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {CONTENT_CATEGORIES.map((category) => {
+                const selected = selectedCategory === category;
+
+                return (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => onChange("contentCategory", category)}
+                    className={`min-h-10 rounded-full border px-3 text-sm font-semibold transition ${
+                      selected
+                        ? "border-emerald-700 bg-emerald-700 text-white"
+                        : "border-zinc-200 bg-white text-zinc-700 active:bg-emerald-50"
+                    }`}
+                  >
+                    {category}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
+            <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
+              <span>詳細タグ</span>
+              <span className="text-zinc-400">任意</span>
+            </span>
             <input
-              value={draft.item.contentName}
-              onChange={(event) => onChange("contentName", event.target.value)}
-              placeholder="例：サウナ、ベーカリー、ランニング"
+              value={contentDetail}
+              onChange={(event) => onChange("contentDetail", event.target.value)}
+              placeholder="例：ラーメン、ボルダリング、古着"
+              maxLength={contentDetailMaxLength}
               className="mt-2 h-12 w-full rounded-xl border border-zinc-100 bg-white px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500"
             />
+            <p className="mt-2 text-xs font-medium leading-5 text-zinc-500">
+              任意：検索しやすい具体名を入れられます
+            </p>
           </label>
 
           <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
             <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
-              <span>場所名</span>
+              <span>店名施設名</span>
               <span className="text-emerald-700">必須</span>
             </span>
             <input
               value={draft.item.placeName ?? ""}
               onChange={(event) => onChange("placeName", event.target.value)}
-              placeholder="例：文化浴泉、Truffle BAKERY 中目黒店"
+              placeholder="例：お店や施設の名前"
               className="mt-2 h-12 w-full rounded-xl border border-zinc-100 bg-white px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500"
             />
           </label>

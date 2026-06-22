@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "../../_components/AppShell";
+import { formatAreaLabel } from "@/lib/area";
 import { supabase } from "@/lib/supabase";
 import {
   getCurrentUserId,
@@ -134,7 +135,7 @@ function getTimeRangeLabel(item: ScheduleItemRow) {
 }
 
 function getTransportLabel(value?: string | null) {
-  if (value === "walking" || value === "walk") return "徒歩中心";
+  if (value === "walking" || value === "walk") return "徒歩あり";
   if (value === "public_transport" || value === "train") return "電車あり";
   if (value === "car") return "車あり";
 
@@ -153,7 +154,7 @@ function getCompanionLabel(value?: string | null) {
 function getBudgetLabel(value?: number | null) {
   if (value === null || value === undefined) return null;
 
-  return value.toLocaleString("ja-JP");
+  return `${value.toLocaleString("ja-JP")}円`;
 }
 
 function getContentName(item: ScheduleItemRow) {
@@ -171,9 +172,58 @@ function sortScheduleItems(items: ScheduleItemRow[]) {
 
 function SummaryPill({ children }: { children: string }) {
   return (
-    <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-100">
+    <span className="rounded-full border border-[#D8F0DD] bg-[#F1FAF3] px-3 py-1.5 text-xs font-semibold text-[#057A55]">
       {children}
     </span>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
+function BookmarkIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M19 21 12 17 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16Z" />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="currentColor"
+    >
+      <circle cx="5" cy="12" r="1.7" />
+      <circle cx="12" cy="12" r="1.7" />
+      <circle cx="19" cy="12" r="1.7" />
+    </svg>
   );
 }
 
@@ -410,33 +460,37 @@ export function PostDetailClient({ postId }: { postId: string }) {
 
   return (
     <AppShell>
-      <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-emerald-50 bg-white/95 px-4 backdrop-blur">
+      <header className="sticky top-0 z-20 grid h-14 grid-cols-[56px_1fr_96px] items-center border-b border-[#D8F0DD] bg-white/95 px-3 backdrop-blur">
         <button
           type="button"
           onClick={handleBack}
-          className="h-9 rounded-full px-1 text-sm font-semibold text-emerald-700"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-[#057A55] active:bg-[#F1FAF3]"
+          aria-label="戻る"
         >
-          戻る
+          <BackIcon />
         </button>
-        <p className="text-sm font-semibold text-zinc-950">投稿詳細</p>
-        <div className="flex items-center gap-2">
+        <p className="text-center text-sm font-bold text-[#111827]">投稿詳細</p>
+        <div className="flex items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={handleToggleSave}
             disabled={isLoading || isSaving || !detail}
-            className={`h-9 rounded-full px-3 text-xs font-semibold ring-1 disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`flex h-10 w-10 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-50 ${
               isSaved
-                ? "bg-emerald-700 text-white ring-emerald-700"
-                : "bg-emerald-50 text-emerald-800 ring-emerald-100"
+                ? "border-[#28B83F] bg-[#28B83F] text-white"
+                : "border-[#D8F0DD] bg-white text-[#057A55] active:bg-[#F1FAF3]"
             }`}
             aria-label={isSaved ? "保存を解除" : "投稿を保存"}
           >
-            {isSaved ? "保存済み" : "保存"}
+            <BookmarkIcon filled={isSaved} />
           </button>
           {canDelete ? (
             <details className="relative">
-              <summary className="flex h-9 cursor-pointer list-none items-center rounded-full bg-white px-3 text-xs font-semibold text-zinc-700 ring-1 ring-zinc-200 marker:hidden">
-                メニュー
+              <summary
+                className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-700 marker:hidden active:bg-zinc-50"
+                aria-label="メニュー"
+              >
+                <MoreIcon />
               </summary>
               <div className="absolute right-0 top-11 z-30 w-40 overflow-hidden rounded-xl border border-zinc-100 bg-white py-1 text-sm shadow-lg">
                 {isOwner ? (
@@ -462,7 +516,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
               </div>
             </details>
           ) : (
-            <span className="w-16" aria-hidden="true" />
+            <span className="h-10 w-10" aria-hidden="true" />
           )}
         </div>
       </header>
@@ -497,11 +551,13 @@ export function PostDetailClient({ postId }: { postId: string }) {
               className="flex touch-pan-y snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               aria-label="投稿詳細スライド"
             >
-              <OverviewSlide detail={detail} />
+              <OverviewSlide
+                detail={detail}
+                activeIndex={activeIndex}
+                onSelectSlide={goToSlide}
+              />
               <TimelineSlide detail={detail} />
             </div>
-
-            <SlideDots activeIndex={activeIndex} onSelect={goToSlide} />
           </section>
         </article>
       )}
@@ -525,7 +581,7 @@ function SlideDots({
           onClick={() => onSelect(index)}
           aria-label={`${index + 1}枚目を表示`}
           className={`h-1.5 rounded-full transition-all ${
-            activeIndex === index ? "w-6 bg-emerald-600" : "w-1.5 bg-emerald-100"
+            activeIndex === index ? "w-6 bg-[#28B83F]" : "w-1.5 bg-zinc-200"
           }`}
         />
       ))}
@@ -533,8 +589,17 @@ function SlideDots({
   );
 }
 
-function OverviewSlide({ detail }: { detail: DetailState }) {
+function OverviewSlide({
+  detail,
+  activeIndex,
+  onSelectSlide,
+}: {
+  detail: DetailState;
+  activeIndex: number;
+  onSelectSlide: (index: number) => void;
+}) {
   const post = detail.post;
+  const areaLabel = formatAreaLabel(post.area);
   const summaryLabels = [
     getTransportLabel(post.transport_type),
     getDurationLabel(detail.scheduleItems),
@@ -545,7 +610,7 @@ function OverviewSlide({ detail }: { detail: DetailState }) {
 
   return (
     <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white pb-2">
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-emerald-50">
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#F1FAF3]">
         {post.cover_image_url?.trim() ? (
           <Image
             src={post.cover_image_url.trim()}
@@ -557,19 +622,21 @@ function OverviewSlide({ detail }: { detail: DetailState }) {
             className="object-cover"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center px-4 text-sm font-semibold text-emerald-700/55">
+          <div className="flex h-full w-full items-center justify-center px-4 text-sm font-semibold text-[#057A55]/60">
             画像未設定
           </div>
         )}
       </div>
 
-      <div className="px-5 pb-7 pt-5">
-        <h1 className="text-2xl font-semibold leading-8 text-zinc-950">
+      <SlideDots activeIndex={activeIndex} onSelect={onSelectSlide} />
+
+      <div className="px-5 pb-7 pt-2">
+        <h1 className="line-clamp-2 text-2xl font-bold leading-8 text-[#111827]">
           {post.title}
         </h1>
-        {post.area?.trim() ? (
-          <p className="mt-2 text-sm font-semibold text-emerald-700">
-            {post.area.trim()}
+        {areaLabel ? (
+          <p className="mt-2 flex min-w-0 items-center gap-1.5 text-sm font-semibold text-[#057A55]">
+            <span className="truncate">{areaLabel}</span>
           </p>
         ) : null}
 
@@ -582,9 +649,14 @@ function OverviewSlide({ detail }: { detail: DetailState }) {
         ) : null}
 
         {caption ? (
-          <p className="mt-7 whitespace-pre-wrap text-[15px] leading-7 text-zinc-800">
-            {caption}
-          </p>
+          <section className="mt-7 border-t border-zinc-100 pt-6">
+            <h2 className="text-lg font-bold text-[#111827]">
+              このルートのポイント
+            </h2>
+            <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-zinc-800">
+              {caption}
+            </p>
+          </section>
         ) : null}
       </div>
     </section>
@@ -593,6 +665,7 @@ function OverviewSlide({ detail }: { detail: DetailState }) {
 
 function TimelineSlide({ detail }: { detail: DetailState }) {
   const post = detail.post;
+  const areaLabel = formatAreaLabel(post.area);
 
   return (
     <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white px-5 pb-8 pt-5">
@@ -617,9 +690,9 @@ function TimelineSlide({ detail }: { detail: DetailState }) {
           <p className="line-clamp-2 text-sm font-semibold leading-5 text-zinc-950">
             {post.title}
           </p>
-          {post.area?.trim() ? (
+          {areaLabel ? (
             <p className="mt-1 truncate text-xs font-semibold text-emerald-700">
-              {post.area.trim()}
+              {areaLabel}
             </p>
           ) : null}
         </div>

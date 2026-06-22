@@ -12,7 +12,7 @@ import {
 } from "@/lib/savedPosts";
 import { formatRouteDuration, parseDurationMinutes } from "@/lib/routeTime";
 
-const tags = ["#カフェ巡り", "#週末旅", "#絶景", "#ランチ"];
+const tags = ["# ランニング", "# サウナ", "# カフェ", "# デート"];
 
 type PostRow = {
   id: string;
@@ -102,7 +102,7 @@ function getDurationLabel(items: ScheduleItemRow[]) {
 }
 
 function getTransportLabel(value?: string | null) {
-  if (value === "walking" || value === "walk") return "徒歩中心";
+  if (value === "walking" || value === "walk") return "徒歩あり";
   if (value === "public_transport" || value === "train") return "電車あり";
   if (value === "car") return "車あり";
 
@@ -121,7 +121,7 @@ function getCompanionLabel(value?: string | null) {
 function getBudgetLabel(value?: number | null) {
   if (value === null || value === undefined) return null;
 
-  return value.toLocaleString("ja-JP");
+  return `${value.toLocaleString("ja-JP")}円`;
 }
 
 function toPostCard(
@@ -301,23 +301,38 @@ export default function HomePage() {
 
   return (
     <AppShell>
-      <header className="sticky top-0 z-10 border-b border-zinc-100 bg-white/95 px-4 py-4 backdrop-blur">
-        <h1 className="text-2xl font-semibold tracking-normal">ROUTY</h1>
-        <label className="mt-4 block">
+      <header className="sticky top-0 z-10 border-b border-[#D8F0DD] bg-white/95 px-4 pb-4 pt-5 backdrop-blur">
+        <h1 className="text-[40px] font-extrabold leading-none tracking-[0.04em] text-[#28B83F]">
+          ROUTY
+        </h1>
+        <label className="relative mt-5 block">
           <span className="sr-only">検索</span>
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#057A55]"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
           <input
             id="search"
             type="search"
             placeholder="行き先やユーザーを検索"
-            className="h-11 w-full rounded-md border border-zinc-200 bg-zinc-50 px-4 text-[15px] outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white"
+            className="h-12 w-full rounded-2xl border border-[#D8F0DD] bg-[#F8FCF9] pl-11 pr-4 text-[15px] font-medium text-[#111827] outline-none placeholder:text-[#6B7280] focus:border-[#28B83F] focus:bg-white"
           />
         </label>
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tags.map((tag) => (
             <button
               key={tag}
               type="button"
-              className="h-8 shrink-0 rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700"
+              className="h-8 shrink-0 rounded-full border border-[#D8F0DD] bg-white px-3 text-xs font-semibold text-[#057A55] active:bg-[#F1FAF3]"
             >
               {tag}
             </button>
@@ -326,7 +341,7 @@ export default function HomePage() {
       </header>
 
       {isLoading ? (
-        <div className="px-4 py-10 text-center text-sm font-medium text-zinc-500">
+        <div className="px-4 py-10 text-center text-sm font-medium text-[#6B7280]">
           読み込み中...
         </div>
       ) : errorMessage ? (
@@ -336,7 +351,7 @@ export default function HomePage() {
           </p>
         </div>
       ) : posts.length === 0 ? (
-        <div className="px-4 py-10 text-center text-sm font-medium text-zinc-500">
+        <div className="px-4 py-10 text-center text-sm font-medium text-[#6B7280]">
           まだ投稿がありません
         </div>
       ) : (
@@ -348,12 +363,13 @@ export default function HomePage() {
               </p>
             </div>
           ) : null}
-          <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-28">
+          <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-[calc(8rem+env(safe-area-inset-bottom))]">
             {posts.map((post) => (
               <PostCard
                 key={post.id}
                 post={post}
                 onToggleSave={handleToggleSave}
+                variant="home"
               />
             ))}
           </div>
