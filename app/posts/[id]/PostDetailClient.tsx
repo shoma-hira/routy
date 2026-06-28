@@ -3,9 +3,16 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toPng } from "html-to-image";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "../../_components/AppShell";
+import { SharePngTemplate } from "../../_components/SharePngTemplate";
 import { formatAreaLabel } from "@/lib/area";
+import {
+  parseRoutyDisplayTags,
+  toRoutyDisplayScheduleItems,
+  type RoutyDisplayScheduleItem,
+} from "@/lib/routyDisplay";
 import { supabase } from "@/lib/supabase";
 import {
   getCurrentUserId,
@@ -15,7 +22,6 @@ import {
 } from "@/lib/savedPosts";
 import {
   formatRouteDuration,
-  formatRouteTime,
   parseDurationMinutes,
   parseRouteTimeToMinutes,
 } from "@/lib/routeTime";
@@ -120,20 +126,6 @@ function getDurationLabel(items: ScheduleItemRow[]) {
   return formatRouteDuration(lastEnd - firstStart);
 }
 
-function getTimeRangeLabel(item: ScheduleItemRow) {
-  const startMinutes = getStartMinutes(item);
-  if (startMinutes === null) return "時刻未設定";
-
-  const endMinutes = getEndMinutes(item);
-  const startLabel = formatRouteTime(startMinutes);
-
-  if (endMinutes === null || endMinutes <= startMinutes) {
-    return startLabel;
-  }
-
-  return `${startLabel}〜${formatRouteTime(endMinutes)}`;
-}
-
 function getTransportLabel(value?: string | null) {
   if (value === "walking" || value === "walk") return "徒歩あり";
   if (value === "public_transport" || value === "train") return "電車あり";
@@ -157,8 +149,65 @@ function getBudgetLabel(value?: number | null) {
   return `${value.toLocaleString("ja-JP")}円`;
 }
 
-function getContentName(item: ScheduleItemRow) {
-  return item.content_name?.trim() || item.spot_name?.trim() || "名称未設定";
+function getShareTransportLabel(value?: string | null) {
+  if (value === "walking" || value === "walk") return "徒歩あり";
+  if (value === "public_transport" || value === "train") return "電車あり";
+  if (value === "car") return "車あり";
+
+  return null;
+}
+
+function getShareCompanionLabel(value?: string | null) {
+  if (value === "solo") return "1人";
+  if (value === "friends") return "友達";
+  if (value === "date") return "デート";
+  if (value === "family") return "家族";
+
+  return null;
+}
+
+function getShareBudgetLabel(value?: number | null) {
+  if (value === null || value === undefined) return null;
+
+  return `${value.toLocaleString("ja-JP")}円`;
+}
+
+function getShareDurationLabel(items: ScheduleItemRow[]) {
+  let firstStart: number | null = null;
+  let lastEnd: number | null = null;
+
+  items.forEach((item) => {
+    const startMinutes = getStartMinutes(item);
+    const endMinutes = getEndMinutes(item);
+    if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+      return;
+    }
+
+    firstStart = firstStart === null ? startMinutes : Math.min(firstStart, startMinutes);
+    lastEnd = lastEnd === null ? endMinutes : Math.max(lastEnd, endMinutes);
+  });
+
+  if (firstStart === null || lastEnd === null || lastEnd <= firstStart) {
+    return null;
+  }
+
+  const totalMinutes = lastEnd - firstStart;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0 && minutes > 0) return `${hours}時間${minutes}分`;
+  if (hours > 0) return `${hours}時間`;
+
+  return `${minutes}分`;
+}
+
+function getShareAreaLabel(value?: string | null) {
+  const normalized = value
+    ?.replace(/^📍\s*/u, "")
+    .replace(/\s*エリア$/u, "")
+    .trim();
+
+  return normalized ? `${normalized}エリア` : "";
 }
 
 function sortScheduleItems(items: ScheduleItemRow[]) {
@@ -227,9 +276,29 @@ function MoreIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 21h14" />
+    </svg>
+  );
+}
+
 export function PostDetailClient({ postId }: { postId: string }) {
   const router = useRouter();
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const shareImageRef = useRef<HTMLDivElement>(null);
   const [detail, setDetail] = useState<DetailState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -237,6 +306,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingShareImage, setIsGeneratingShareImage] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<ProfileRole>("user");
   const [notFound, setNotFound] = useState(false);
@@ -449,6 +519,42 @@ export function PostDetailClient({ postId }: { postId: string }) {
     }
   }
 
+  async function handleSaveShareImage() {
+    if (!detail || !userId || detail.post.user_id !== userId) {
+      setSaveErrorMessage("シェア画像を保存できるのは投稿者本人のみです。");
+      return;
+    }
+
+    if (!shareImageRef.current) {
+      setSaveErrorMessage("シェア画像の生成準備ができていません。");
+      return;
+    }
+
+    setIsGeneratingShareImage(true);
+    setSaveErrorMessage(null);
+
+    try {
+      const dataUrl = await toPng(shareImageRef.current, {
+        backgroundColor: "transparent",
+        pixelRatio: 3,
+        cacheBust: true,
+      });
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `routy-share-${detail.post.id}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error("ROUTY share image generation failed", error);
+      setSaveErrorMessage(
+        "シェア画像の生成に失敗しました。時間をおいて再度お試しください。",
+      );
+    } finally {
+      setIsGeneratingShareImage(false);
+    }
+  }
+
   function handleBack() {
     if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
@@ -460,7 +566,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
 
   return (
     <AppShell>
-      <header className="sticky top-0 z-20 grid h-14 grid-cols-[56px_1fr_96px] items-center border-b border-[#D8F0DD] bg-white/95 px-3 backdrop-blur">
+      <header className="sticky top-0 z-20 grid h-14 grid-cols-[112px_1fr_112px] items-center border-b border-[#D8F0DD] bg-white/95 px-2 backdrop-blur">
         <button
           type="button"
           onClick={handleBack}
@@ -470,7 +576,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
           <BackIcon />
         </button>
         <p className="text-center text-sm font-bold text-[#111827]">投稿詳細</p>
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="flex items-center justify-end gap-1">
           <button
             type="button"
             onClick={handleToggleSave}
@@ -484,6 +590,17 @@ export function PostDetailClient({ postId }: { postId: string }) {
           >
             <BookmarkIcon filled={isSaved} />
           </button>
+          {isOwner ? (
+            <button
+              type="button"
+              onClick={handleSaveShareImage}
+              disabled={isGeneratingShareImage}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#D8F0DD] bg-white text-[#057A55] transition active:bg-[#F1FAF3] disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="シェア画像を保存"
+            >
+              <DownloadIcon />
+            </button>
+          ) : null}
           {canDelete ? (
             <details className="relative">
               <summary
@@ -559,6 +676,30 @@ export function PostDetailClient({ postId }: { postId: string }) {
               <TimelineSlide detail={detail} />
             </div>
           </section>
+          {isOwner ? (
+            <div className="fixed top-0 left-[-10000px] h-[640px] w-[360px] overflow-hidden">
+              <div ref={shareImageRef} className="h-[640px] w-[360px] bg-transparent">
+                <SharePngTemplate
+                  title={detail.post.title}
+                  area={getShareAreaLabel(detail.post.area)}
+                  infoChips={
+                    [
+                      getShareTransportLabel(detail.post.transport_type),
+                      getShareDurationLabel(detail.scheduleItems),
+                      getShareBudgetLabel(detail.post.budget),
+                      getShareCompanionLabel(detail.post.companion_type),
+                    ].filter(Boolean) as string[]
+                  }
+                  items={toRoutyDisplayScheduleItems(detail.scheduleItems).map(
+                    (item) => ({
+                      time: item.startTime ?? item.displayTime,
+                      placeName: item.displayTitle,
+                    }),
+                  )}
+                />
+              </div>
+            </div>
+          ) : null}
         </article>
       )}
     </AppShell>
@@ -666,6 +807,7 @@ function OverviewSlide({
 function TimelineSlide({ detail }: { detail: DetailState }) {
   const post = detail.post;
   const areaLabel = formatAreaLabel(post.area);
+  const displayScheduleItems = toRoutyDisplayScheduleItems(detail.scheduleItems);
 
   return (
     <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white px-5 pb-8 pt-5">
@@ -701,7 +843,7 @@ function TimelineSlide({ detail }: { detail: DetailState }) {
       <div className="mt-5 border-t border-zinc-100 pt-5">
         <h2 className="text-xl font-semibold text-zinc-950">タイムライン</h2>
 
-        {detail.scheduleItems.length === 0 ? (
+        {displayScheduleItems.length === 0 ? (
           <p className="mt-5 rounded-xl bg-zinc-50 px-4 py-5 text-sm font-medium text-zinc-500">
             スケジュールが登録されていません
           </p>
@@ -709,8 +851,11 @@ function TimelineSlide({ detail }: { detail: DetailState }) {
           <div className="relative mt-6">
             <div className="absolute left-[7px] top-3 h-[calc(100%-24px)] w-px bg-emerald-200" />
             <div className="space-y-7">
-              {detail.scheduleItems.map((item, index) => (
-                <TimelineItem key={item.id || `${item.post_id}-${index}`} item={item} />
+              {displayScheduleItems.map((item) => (
+                <TimelineItem
+                  key={item.raw.id || `${item.raw.post_id}-${item.displayNumber}`}
+                  item={item}
+                />
               ))}
             </div>
           </div>
@@ -720,11 +865,12 @@ function TimelineSlide({ detail }: { detail: DetailState }) {
   );
 }
 
-function TimelineItem({ item }: { item: ScheduleItemRow }) {
-  const placeName = item.place_name?.trim();
-  const comment = item.comment?.trim();
-  const imageUrl = item.image_url?.trim();
-  const contentName = getContentName(item);
+function TimelineItem({
+  item,
+}: {
+  item: RoutyDisplayScheduleItem<ScheduleItemRow>;
+}) {
+  const tags = parseRoutyDisplayTags(item.displaySubtitle);
 
   return (
     <div className="grid grid-cols-[16px_1fr] gap-3">
@@ -734,27 +880,36 @@ function TimelineItem({ item }: { item: ScheduleItemRow }) {
 
       <div className="min-w-0">
         <p className="text-xs font-bold tabular-nums text-emerald-700">
-          {getTimeRangeLabel(item)}
+          {item.displayTime || "時刻未設定"}
         </p>
-        <div className={imageUrl ? "mt-2 grid grid-cols-[1fr_88px] gap-3" : "mt-2"}>
+        <div className={item.imageUrl ? "mt-2 grid grid-cols-[1fr_88px] gap-3" : "mt-2"}>
           <div className="min-w-0">
             <h3 className="text-base font-semibold leading-6 text-zinc-950">
-              {contentName}
+              {item.displayTitle || "名称未設定"}
             </h3>
-            {placeName ? (
-              <p className="mt-1 text-sm leading-6 text-zinc-700">{placeName}</p>
+            {tags.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-sm font-semibold leading-6 text-blue-600"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
             ) : null}
-            {comment ? (
+            {item.displayNote ? (
               <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-600">
-                {comment}
+                {item.displayNote}
               </p>
             ) : null}
           </div>
-          {imageUrl ? (
+          {item.imageUrl ? (
             <div className="relative h-24 overflow-hidden rounded-xl bg-zinc-100">
               <Image
-                src={imageUrl}
-                alt={`${contentName}の画像`}
+                src={item.imageUrl}
+                alt={`${item.displayTitle || item.contentName}の画像`}
                 fill
                 unoptimized
                 sizes="88px"

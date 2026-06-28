@@ -1,18 +1,14 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "../_components/AppShell";
-import { PostCard, type PostCardPost } from "../_components/PostCard";
+import { getCurrentUserId, getReadableSupabaseError } from "@/lib/savedPosts";
+import { parseDurationMinutes } from "@/lib/routeTime";
 import { supabase } from "@/lib/supabase";
-import {
-  getCurrentUserId,
-  getReadableSupabaseError,
-  getSavedPostIds,
-  toggleSavedPost,
-} from "@/lib/savedPosts";
-import { formatRouteDuration, parseDurationMinutes } from "@/lib/routeTime";
 
-const tags = ["# ランニング", "# サウナ", "# カフェ", "# デート"];
+const categoryTags = ["# ランニング", "# サウナ", "# カフェ", "# デート"];
 
 type PostRow = {
   id: string;
@@ -28,12 +24,6 @@ type PostRow = {
   created_at: string;
 };
 
-type ProfileRow = {
-  id: string;
-  display_name: string | null;
-  avatar_url: string | null;
-};
-
 type ScheduleItemRow = {
   post_id: string;
   start_time: string | null;
@@ -42,6 +32,17 @@ type ScheduleItemRow = {
   stay_duration: string | number | null;
   sort_order: number | null;
   created_at: string | null;
+};
+
+type HomePost = {
+  id: string;
+  title: string;
+  area: string | null;
+  transportLabel: string;
+  durationLabel: string;
+  budgetLabel: string;
+  companionLabel: string;
+  coverImage: string | null;
 };
 
 function getErrorMessage(error: unknown) {
@@ -79,6 +80,18 @@ function getScheduleEndMinutes(item: ScheduleItemRow, startMinutes: number) {
   return startMinutes + durationMinutes;
 }
 
+function formatDuration(minutes: number) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "4時間";
+
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+
+  if (hours > 0 && rest > 0) return `${hours}時間${rest}分`;
+  if (hours > 0) return `${hours}時間`;
+
+  return `${rest}分`;
+}
+
 function getDurationLabel(items: ScheduleItemRow[]) {
   let firstStart: number | null = null;
   let lastEnd: number | null = null;
@@ -95,10 +108,10 @@ function getDurationLabel(items: ScheduleItemRow[]) {
   });
 
   if (firstStart === null || lastEnd === null || lastEnd <= firstStart) {
-    return "時間未設定";
+    return "4時間";
   }
 
-  return formatRouteDuration(lastEnd - firstStart);
+  return formatDuration(lastEnd - firstStart);
 }
 
 function getTransportLabel(value?: string | null) {
@@ -106,50 +119,113 @@ function getTransportLabel(value?: string | null) {
   if (value === "public_transport" || value === "train") return "電車あり";
   if (value === "car") return "車あり";
 
-  return null;
+  return "徒歩あり";
 }
 
 function getCompanionLabel(value?: string | null) {
-  if (value === "solo") return "1人";
+  if (value === "solo") return "ひとり";
   if (value === "friends") return "友達";
   if (value === "date") return "デート";
   if (value === "family") return "家族";
 
-  return null;
+  return "デート";
 }
 
 function getBudgetLabel(value?: number | null) {
-  if (value === null || value === undefined) return null;
+  if (value === null || value === undefined) return "2,000円";
 
   return `${value.toLocaleString("ja-JP")}円`;
 }
 
-function toPostCard(
-  post: PostRow,
-  profile: ProfileRow | undefined,
-  savedPostIds: Set<string>,
-  scheduleItems: ScheduleItemRow[],
-): PostCardPost {
+function toHomePost(post: PostRow, scheduleItems: ScheduleItemRow[]): HomePost {
   return {
     id: post.id,
     title: post.title,
-    author: profile?.display_name?.trim() || "ROUTY User",
     area: post.area?.trim() || null,
     transportLabel: getTransportLabel(post.transport_type),
     durationLabel: getDurationLabel(scheduleItems),
     budgetLabel: getBudgetLabel(post.budget),
     companionLabel: getCompanionLabel(post.companion_type),
     coverImage: post.cover_image_url?.trim() || null,
-    saved: savedPostIds.has(post.id),
   };
 }
 
+function SearchIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+function PostCard({ post }: { post: HomePost }) {
+  const areaLabel = post.area ? `${post.area}エリア` : "エリア未設定";
+  const infoLabels = [
+    post.transportLabel,
+    post.durationLabel,
+    post.budgetLabel,
+    post.companionLabel,
+  ];
+
+  return (
+    <article className="min-w-0 overflow-hidden rounded-2xl border border-[#D8F0DD] bg-white shadow-[0_8px_22px_rgba(17,24,39,0.06)]">
+      <Link href={`/posts/${post.id}`} className="block">
+        <div className="relative aspect-[16/10] w-full overflow-hidden bg-[#F1FAF3]">
+          {post.coverImage ? (
+            <Image
+              src={post.coverImage}
+              alt={`${post.title}のサムネイル画像`}
+              fill
+              unoptimized
+              sizes="calc((min(100vw, 430px) - 44px) / 2)"
+              className="object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center px-3 text-center text-[11px] font-semibold leading-5 text-[#057A55]/60">
+              画像未設定
+            </div>
+          )}
+        </div>
+
+        <div className="p-3">
+          <h2 className="line-clamp-2 min-h-[38px] text-[13px] font-bold leading-[1.45] text-[#111827]">
+            {post.title}
+          </h2>
+          <p className="mt-1.5 flex min-w-0 items-center gap-1 text-[11px] font-semibold leading-4 text-[#057A55]">
+            <span aria-hidden="true">📍</span>
+            <span className="truncate">{areaLabel}</span>
+          </p>
+
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            {infoLabels.map((label) => (
+              <span
+                key={label}
+                className="min-w-0 truncate rounded-full border border-[#D8F0DD] bg-[#F1FAF3] px-2 py-1 text-center text-[10px] font-semibold leading-none text-[#057A55]"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </Link>
+    </article>
+  );
+}
+
 export default function HomePage() {
-  const [posts, setPosts] = useState<PostCardPost[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [posts, setPosts] = useState<HomePost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -159,7 +235,8 @@ export default function HomePage() {
       setErrorMessage(null);
 
       try {
-        const currentUserId = await getCurrentUserId();
+        await getCurrentUserId();
+
         const { data: postRows, error: postsError } = await supabase
           .from("posts")
           .select(
@@ -171,7 +248,6 @@ export default function HomePage() {
         if (postsError) throw postsError;
 
         const publishedPosts = (postRows ?? []) as PostRow[];
-        const savedPostIds = await getSavedPostIds(currentUserId);
         const postIds = publishedPosts.map((post) => post.id);
         let scheduleItemsByPostId = new Map<string, ScheduleItemRow[]>();
 
@@ -196,43 +272,15 @@ export default function HomePage() {
           );
         }
 
-        const userIds = Array.from(
-          new Set(publishedPosts.map((post) => post.user_id).filter(Boolean)),
-        );
-        let profilesById = new Map<string, ProfileRow>();
-
-        if (userIds.length > 0) {
-          const { data: profileRows, error: profilesError } = await supabase
-            .from("profiles")
-            .select("id,display_name,avatar_url")
-            .in("id", userIds);
-
-          if (profilesError) throw profilesError;
-
-          profilesById = new Map(
-            ((profileRows ?? []) as ProfileRow[]).map((profile) => [
-              profile.id,
-              profile,
-            ]),
-          );
-        }
-
         const nextPosts = publishedPosts.map((post) =>
-          toPostCard(
-            post,
-            profilesById.get(post.user_id),
-            savedPostIds,
-            scheduleItemsByPostId.get(post.id) ?? [],
-          ),
+          toHomePost(post, scheduleItemsByPostId.get(post.id) ?? []),
         );
 
         console.log("ROUTY home posts loaded", {
           postCount: nextPosts.length,
-          profileCount: profilesById.size,
         });
 
         if (isMounted) {
-          setUserId(currentUserId);
           setPosts(nextPosts);
         }
       } catch (error) {
@@ -255,87 +303,28 @@ export default function HomePage() {
     };
   }, []);
 
-  async function handleToggleSave(postId: string) {
-    if (!userId) {
-      const message = "ログイン中のユーザーを取得できませんでした。";
-      console.error("ROUTY save toggle failed", message);
-      setSaveErrorMessage(message);
-      return;
-    }
-
-    const target = posts.find((post) => post.id === postId);
-    if (!target) return;
-
-    setSaveErrorMessage(null);
-    setPosts((currentPosts) =>
-      currentPosts.map((post) =>
-        post.id === postId ? { ...post, isSaving: true } : post,
-      ),
-    );
-
-    try {
-      const nextSaved = await toggleSavedPost({
-        userId,
-        postId,
-        saved: Boolean(target.saved),
-      });
-
-      setPosts((currentPosts) =>
-        currentPosts.map((post) =>
-          post.id === postId
-            ? { ...post, saved: nextSaved, isSaving: false }
-            : post,
-        ),
-      );
-    } catch (error) {
-      const message = getReadableSupabaseError(error, "保存処理に失敗しました。");
-      console.error("ROUTY save toggle failed", error);
-      setSaveErrorMessage(message);
-      setPosts((currentPosts) =>
-        currentPosts.map((post) =>
-          post.id === postId ? { ...post, isSaving: false } : post,
-        ),
-      );
-    }
-  }
-
   return (
     <AppShell>
-      <header className="sticky top-0 z-10 border-b border-[#D8F0DD] bg-white/95 px-4 pb-4 pt-5 backdrop-blur">
+      <header className="bg-white px-4 pb-4 pt-8">
         <h1 className="text-[40px] font-extrabold leading-none tracking-[0.04em] text-[#28B83F]">
           ROUTY
         </h1>
-        <label className="relative mt-5 block">
-          <span className="sr-only">検索</span>
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#057A55]"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.3-4.3" />
-          </svg>
-          <input
-            id="search"
-            type="search"
-            placeholder="行き先やユーザーを検索"
-            className="h-12 w-full rounded-2xl border border-[#D8F0DD] bg-[#F8FCF9] pl-11 pr-4 text-[15px] font-medium text-[#111827] outline-none placeholder:text-[#6B7280] focus:border-[#28B83F] focus:bg-white"
-          />
-        </label>
+
+        <div className="relative mt-5 flex h-12 items-center rounded-2xl border border-[#D8F0DD] bg-[#F8FCF9] px-4 text-[#6B7280]">
+          <span className="mr-3 text-[#057A55]">
+            <SearchIcon />
+          </span>
+          <span className="text-[15px] font-medium">行き先やユーザーを検索</span>
+        </div>
+
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {tags.map((tag) => (
-            <button
+          {categoryTags.map((tag) => (
+            <span
               key={tag}
-              type="button"
-              className="h-8 shrink-0 rounded-full border border-[#D8F0DD] bg-white px-3 text-xs font-semibold text-[#057A55] active:bg-[#F1FAF3]"
+              className="h-8 shrink-0 rounded-full border border-[#D8F0DD] bg-white px-3 py-2 text-xs font-semibold leading-none text-[#057A55]"
             >
               {tag}
-            </button>
+            </span>
           ))}
         </div>
       </header>
@@ -355,25 +344,11 @@ export default function HomePage() {
           まだ投稿がありません
         </div>
       ) : (
-        <>
-          {saveErrorMessage ? (
-            <div className="px-4 pt-4">
-              <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700">
-                {saveErrorMessage}
-              </p>
-            </div>
-          ) : null}
-          <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-[calc(8rem+env(safe-area-inset-bottom))]">
-            {posts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                onToggleSave={handleToggleSave}
-                variant="home"
-              />
-            ))}
-          </div>
-        </>
+        <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-[calc(9rem+env(safe-area-inset-bottom))]">
+          {posts.map((post) => (
+            <PostCard key={post.id} post={post} />
+          ))}
+        </div>
       )}
     </AppShell>
   );
