@@ -210,6 +210,17 @@ function getShareAreaLabel(value?: string | null) {
   return normalized ? `${normalized}エリア` : "";
 }
 
+function splitTitleByFullWidthSpace(title: string) {
+  const lines = title
+    .split("　")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length <= 1) return null;
+
+  return [lines[0], lines.slice(1).join("　")];
+}
+
 function sortScheduleItems(items: ScheduleItemRow[]) {
   return [...items].sort((a, b) => {
     const startDiff = (getStartMinutes(a) ?? 0) - (getStartMinutes(b) ?? 0);
@@ -677,8 +688,8 @@ export function PostDetailClient({ postId }: { postId: string }) {
             </div>
           </section>
           {isOwner ? (
-            <div className="fixed top-0 left-[-10000px] h-[640px] w-[360px] overflow-hidden">
-              <div ref={shareImageRef} className="h-[640px] w-[360px] bg-transparent">
+            <div className="fixed top-0 left-[-10000px] h-[450px] w-[360px] overflow-hidden">
+              <div ref={shareImageRef} className="h-[450px] w-[360px] bg-transparent">
                 <SharePngTemplate
                   title={detail.post.title}
                   area={getShareAreaLabel(detail.post.area)}
@@ -748,6 +759,7 @@ function OverviewSlide({
     getCompanionLabel(post.companion_type),
   ].filter(Boolean) as string[];
   const caption = post.caption?.trim();
+  const titleLines = splitTitleByFullWidthSpace(post.title);
 
   return (
     <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white pb-2">
@@ -772,8 +784,19 @@ function OverviewSlide({
       <SlideDots activeIndex={activeIndex} onSelect={onSelectSlide} />
 
       <div className="px-5 pb-7 pt-2">
-        <h1 className="line-clamp-2 text-2xl font-bold leading-8 text-[#111827]">
-          {post.title}
+        <h1
+          className={`text-2xl font-bold leading-8 text-[#111827] ${
+            titleLines ? "" : "line-clamp-2"
+          }`}
+        >
+          {titleLines ? (
+            <>
+              <span className="block">{titleLines[0]}</span>
+              <span className="block">{titleLines[1]}</span>
+            </>
+          ) : (
+            post.title
+          )}
         </h1>
         {areaLabel ? (
           <p className="mt-2 flex min-w-0 items-center gap-1.5 text-sm font-semibold text-[#057A55]">
@@ -808,6 +831,7 @@ function TimelineSlide({ detail }: { detail: DetailState }) {
   const post = detail.post;
   const areaLabel = formatAreaLabel(post.area);
   const displayScheduleItems = toRoutyDisplayScheduleItems(detail.scheduleItems);
+  const titleLines = splitTitleByFullWidthSpace(post.title);
 
   return (
     <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white px-5 pb-8 pt-5">
@@ -829,8 +853,19 @@ function TimelineSlide({ detail }: { detail: DetailState }) {
           )}
         </div>
         <div className="min-w-0">
-          <p className="line-clamp-2 text-sm font-semibold leading-5 text-zinc-950">
-            {post.title}
+          <p
+            className={`text-sm font-semibold leading-5 text-zinc-950 ${
+              titleLines ? "" : "line-clamp-2"
+            }`}
+          >
+            {titleLines ? (
+              <>
+                <span className="block">{titleLines[0]}</span>
+                <span className="block">{titleLines[1]}</span>
+              </>
+            ) : (
+              post.title
+            )}
           </p>
           {areaLabel ? (
             <p className="mt-1 truncate text-xs font-semibold text-emerald-700">

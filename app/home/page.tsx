@@ -150,6 +150,17 @@ function toHomePost(post: PostRow, scheduleItems: ScheduleItemRow[]): HomePost {
   };
 }
 
+function splitTitleByFullWidthSpace(title: string) {
+  const lines = title
+    .split("　")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length <= 1) return null;
+
+  return [lines[0], lines.slice(1).join("　")];
+}
+
 function SearchIcon() {
   return (
     <svg
@@ -170,6 +181,7 @@ function SearchIcon() {
 
 function PostCard({ post }: { post: HomePost }) {
   const areaLabel = post.area ? `${post.area}エリア` : "エリア未設定";
+  const titleLines = splitTitleByFullWidthSpace(post.title);
   const infoLabels = [
     post.transportLabel,
     post.durationLabel,
@@ -198,8 +210,19 @@ function PostCard({ post }: { post: HomePost }) {
         </div>
 
         <div className="p-3">
-          <h2 className="line-clamp-2 min-h-[38px] text-[13px] font-bold leading-[1.45] text-[#111827]">
-            {post.title}
+          <h2
+            className={`min-h-[38px] text-[13px] font-bold leading-[1.45] text-[#111827] ${
+              titleLines ? "" : "line-clamp-2"
+            }`}
+          >
+            {titleLines ? (
+              <>
+                <span className="block whitespace-nowrap">{titleLines[0]}</span>
+                <span className="block whitespace-nowrap">{titleLines[1]}</span>
+              </>
+            ) : (
+              post.title
+            )}
           </h2>
           <p className="mt-1.5 flex min-w-0 items-center gap-1 text-[11px] font-semibold leading-4 text-[#057A55]">
             <span aria-hidden="true">📍</span>

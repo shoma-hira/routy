@@ -147,21 +147,6 @@ const weatherOptions: { value: Exclude<WeatherType, "">; label: string }[] = [
   { value: "rain_ok", label: "雨でもOK" },
   { value: "any", label: "どちらでもOK" },
 ];
-const CONTENT_CATEGORIES = [
-  "グルメ",
-  "サウナ温泉",
-  "観光",
-  "運動",
-  "買い物",
-  "遊び",
-  "イベント",
-  "アウトドア",
-  "その他",
-] as const;
-
-type ContentCategory = (typeof CONTENT_CATEGORIES)[number];
-const contentDetailMaxLength = 20;
-
 const timeOptions = Array.from(
   { length: timelineEnd / stepMinutes + 1 },
   (_, index) => index * stepMinutes,
@@ -197,45 +182,26 @@ function normalizeSchedule(items?: ScheduleItemInput[]) {
   return source.map(normalizeScheduleItem);
 }
 
-function isContentCategory(value: string): value is ContentCategory {
-  return CONTENT_CATEGORIES.includes(value as ContentCategory);
+function normalizeTagToken(value?: string | null) {
+  const tag = (value ?? "").trim().replace(/^[#＃]+/, "");
+
+  return tag;
 }
 
-function sanitizeContentDetail(value?: string | null) {
-  return (value ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, contentDetailMaxLength);
+function parseTagInput(value?: string | null) {
+  const tags = (value ?? "")
+    .replace(/[\r\n]+/g, " ")
+    .split(/\s+/)
+    .map(normalizeTagToken)
+    .filter(Boolean);
+
+  return Array.from(new Set(tags));
 }
 
-function formatContentName(category?: string | null, detail?: string | null) {
-  const normalizedCategory = (category ?? "").trim();
-  if (!isContentCategory(normalizedCategory)) return "";
-
-  const normalizedDetail = sanitizeContentDetail(detail);
-  return normalizedDetail
-    ? `${normalizedCategory}（${normalizedDetail}）`
-    : normalizedCategory;
-}
-
-function parseContentName(value?: string | null): {
-  category: ContentCategory | "";
-  detail: string;
-} {
-  const text = (value ?? "").trim();
-  if (!text) return { category: "", detail: "" };
-
-  if (isContentCategory(text)) {
-    return { category: text, detail: "" };
-  }
-
-  const match = text.match(/^(.+?)（(.+)）$/);
-  if (match) {
-    const category = match[1].trim();
-    const detail = sanitizeContentDetail(match[2]);
-    if (isContentCategory(category)) {
-      return { category, detail };
-    }
-  }
-
-  return { category: "その他", detail: sanitizeContentDetail(text) };
+function formatTagInput(value?: string | null) {
+  return parseTagInput(value)
+    .map((tag) => `#${tag}`)
+    .join(" ");
 }
 
 export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent {
@@ -245,10 +211,6 @@ export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent 
   const legacyDuration = item.stay_duration ?? item.stayDurationLegacy;
   const contentName =
     item.content_name ?? item.contentName ?? item.spot_name ?? item.spotName ?? "";
-  const parsedContent = parseContentName(contentName);
-  const contentCategory = item.contentCategory ?? parsedContent.category;
-  const contentDetail = item.contentDetail ?? parsedContent.detail;
-  const normalizedContentName = formatContentName(contentCategory, contentDetail);
   const placeName = item.place_name ?? item.placeName ?? "";
   const hasLegacySpotName = Boolean((item.spot_name ?? item.spotName)?.trim());
   const isLegacyPlaceNameMissing =
@@ -267,9 +229,9 @@ export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent 
   return {
     ...emptyContent(),
     ...item,
-    contentName: normalizedContentName,
-    contentCategory,
-    contentDetail,
+    contentName: contentName.trim(),
+    contentCategory: item.contentCategory ?? "",
+    contentDetail: item.contentDetail ?? "",
     placeName,
     startTime,
     startDate: item.startDate ?? "",
@@ -518,11 +480,7 @@ function toScheduleRow(
   postId: string,
   index: number,
 ): ScheduleItemRow {
-  const parsedContent = parseContentName(item.contentName);
-  const contentName = formatContentName(
-    item.contentCategory || parsedContent.category,
-    item.contentDetail ?? parsedContent.detail,
-  );
+  const contentName = formatTagInput(item.contentName);
   const startTime = item.startTime || null;
   const endTime = item.endTime || null;
   const stayDuration = calculateStayDuration(item.startTime, item.endTime);
@@ -551,24 +509,6 @@ function validateScheduleItemsForStep(items: ScheduleContent[]) {
 
   if (scheduleToValidate.length === 0) {
     return "スケジュールを1件以上追加してください。";
-  }
-
-  const invalidContentItem = scheduleToValidate.find((item) => {
-    const parsed = parseContentName(item.contentName);
-    return !(item.contentCategory || parsed.category);
-  });
-  if (invalidContentItem) {
-    return "カテゴリを選択してください";
-  }
-
-  const invalidCategoryItem = scheduleToValidate.find(
-    (item) => {
-      const parsed = parseContentName(item.contentName);
-      return !isContentCategory(item.contentCategory || parsed.category);
-    },
-  );
-  if (invalidCategoryItem) {
-    return "カテゴリを9項目の中から選択してください";
   }
 
   const invalidPlaceItem = scheduleToValidate.find(
@@ -1109,17 +1049,6 @@ export function CreateBookmarkForm({
         nextItem.endTime = sanitizeEndTime(nextItem.startTime, value);
       }
 
-      if (field === "contentDetail") {
-        nextItem.contentDetail = sanitizeContentDetail(value);
-      }
-
-      if (field === "contentCategory" || field === "contentDetail") {
-        nextItem.contentName = formatContentName(
-          nextItem.contentCategory,
-          nextItem.contentDetail,
-        );
-      }
-
       nextItem.stayDuration = `${getDurationMinutes(nextItem)}分`;
 
       return { ...current, item: nextItem };
@@ -1128,20 +1057,6 @@ export function CreateBookmarkForm({
 
   function saveDraftEvent() {
     if (!draftEvent) return;
-
-    const category = draftEvent.item.contentCategory?.trim() ?? "";
-    if (!category) {
-      setFieldError("カテゴリを選択してください");
-      return;
-    }
-
-    if (!isContentCategory(category)) {
-      setFieldError("カテゴリを9項目の中から選択してください");
-      return;
-    }
-
-    const contentDetail = sanitizeContentDetail(draftEvent.item.contentDetail);
-    const contentName = formatContentName(category, contentDetail);
 
     const placeName = draftEvent.item.placeName?.trim() ?? "";
     if (!placeName) {
@@ -1167,11 +1082,13 @@ export function CreateBookmarkForm({
       return;
     }
 
+    const contentName = formatTagInput(draftEvent.item.contentName);
+
     const nextItem: ScheduleContent = {
       ...draftEvent.item,
       contentName,
-      contentCategory: category,
-      contentDetail,
+      contentCategory: "",
+      contentDetail: "",
       placeName,
       startDate: draftEvent.item.startDate || selectedDate,
       endDate: draftEvent.item.endDate || selectedDate,
@@ -1667,7 +1584,7 @@ function ScheduleEditorStep({
 
                 {sortedSchedule.map(({ item, index }) => (
                   <TimelineEventBlock
-                    key={`${index}-${item.startTime}-${item.contentName}`}
+                    key={`${index}-${item.startTime}-${item.placeName ?? item.contentName}`}
                     item={item}
                     onClick={() => onOpenExistingEvent(index)}
                   />
@@ -1834,9 +1751,15 @@ function PostMetadataStep({
               value={title}
               onChange={(event) => onTitleChange(event.target.value)}
               maxLength={100}
-              placeholder="朝サウナとベーカリーで整う休日"
+              placeholder="自由が丘で作業して　雑貨屋巡りする日"
               className="h-12 w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:bg-white"
             />
+            <p className="mt-2 text-xs font-medium leading-5 text-zinc-500">
+              PNGでは全角スペースを入れた位置で改行されます
+            </p>
+            <p className="mt-1 text-xs font-medium leading-5 text-zinc-400">
+              例：自由が丘で作業して　雑貨屋巡りする日
+            </p>
           </label>
 
           <label className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
@@ -2046,7 +1969,7 @@ function TimelineEventBlock({
         {item.startTime}〜{formatTimelineTime(endMinutes)}
       </p>
       <p className="mt-0.5 block min-w-0 overflow-hidden text-ellipsis text-sm font-bold leading-5 text-zinc-950 line-clamp-2">
-        {item.contentName || "名称未入力"}
+        {item.placeName?.trim() || item.contentName || "未設定"}
       </p>
     </button>
   );
@@ -2184,9 +2107,24 @@ function EventSheet({
 }) {
   const startMinutes = toMinutes(draft.item.startTime) ?? timelineStart;
   const duration = getDurationMinutes(draft.item);
-  const parsedContent = parseContentName(draft.item.contentName);
-  const selectedCategory = draft.item.contentCategory || parsedContent.category;
-  const contentDetail = draft.item.contentDetail ?? parsedContent.detail;
+  const tags = parseTagInput(draft.item.contentName);
+  const [tagDraft, setTagDraft] = useState("");
+
+  function updateTags(nextTags: string[]) {
+    onChange("contentName", formatTagInput(nextTags.join(" ")));
+  }
+
+  function addTag() {
+    const nextTags = parseTagInput(tagDraft);
+    if (nextTags.length === 0) return;
+
+    updateTags([...tags, ...nextTags]);
+    setTagDraft("");
+  }
+
+  function removeTag(tagToRemove: string) {
+    updateTags(tags.filter((tag) => tag !== tagToRemove));
+  }
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/35 px-0">
@@ -2222,6 +2160,70 @@ function EventSheet({
         </div>
 
         <div className="space-y-3">
+          <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
+            <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
+              <span>店舗施設名</span>
+              <span className="text-emerald-700">必須</span>
+            </span>
+            <input
+              value={draft.item.placeName ?? ""}
+              onChange={(event) => onChange("placeName", event.target.value)}
+              placeholder="例：amber、マルシンスパ、フェリーチェ"
+              className="mt-2 h-12 w-full rounded-xl border border-zinc-100 bg-white px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500"
+            />
+          </label>
+
+          <div className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
+            <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
+              <span>タグ</span>
+              <span className="text-zinc-400">任意</span>
+            </span>
+            <div className="mt-3 flex gap-2">
+              <input
+                value={tagDraft}
+                onChange={(event) => setTagDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  addTag();
+                }}
+                placeholder="タグを入力"
+                className="h-11 min-w-0 flex-1 rounded-xl border border-zinc-100 bg-white px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={addTag}
+                className="h-11 rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white active:bg-emerald-800"
+              >
+                追加
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {tags.length > 0 ? (
+                tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => removeTag(tag)}
+                      className="-mr-1 flex h-6 w-6 items-center justify-center rounded-full text-emerald-700 active:bg-emerald-100"
+                      aria-label={`${tag}を削除`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <p className="py-1 text-xs font-medium text-zinc-400">
+                  タグはまだ追加されていません
+                </p>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
               <span className="text-xs font-semibold text-zinc-600">開始時刻</span>
@@ -2254,63 +2256,6 @@ function EventSheet({
               </select>
             </label>
           </div>
-
-          <div className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
-            <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
-              <span>コンテンツ名</span>
-              <span className="text-emerald-700">必須</span>
-            </span>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {CONTENT_CATEGORIES.map((category) => {
-                const selected = selectedCategory === category;
-
-                return (
-                  <button
-                    key={category}
-                    type="button"
-                    onClick={() => onChange("contentCategory", category)}
-                    className={`min-h-10 rounded-full border px-3 text-sm font-semibold transition ${
-                      selected
-                        ? "border-emerald-700 bg-emerald-700 text-white"
-                        : "border-zinc-200 bg-white text-zinc-700 active:bg-emerald-50"
-                    }`}
-                  >
-                    {category}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
-            <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
-              <span>詳細タグ</span>
-              <span className="text-zinc-400">任意</span>
-            </span>
-            <input
-              value={contentDetail}
-              onChange={(event) => onChange("contentDetail", event.target.value)}
-              placeholder="例：ラーメン、ボルダリング、古着"
-              maxLength={contentDetailMaxLength}
-              className="mt-2 h-12 w-full rounded-xl border border-zinc-100 bg-white px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500"
-            />
-            <p className="mt-2 text-xs font-medium leading-5 text-zinc-500">
-              任意：検索しやすい具体名を入れられます
-            </p>
-          </label>
-
-          <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
-            <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
-              <span>店名施設名</span>
-              <span className="text-emerald-700">必須</span>
-            </span>
-            <input
-              value={draft.item.placeName ?? ""}
-              onChange={(event) => onChange("placeName", event.target.value)}
-              placeholder="例：お店や施設の名前"
-              className="mt-2 h-12 w-full rounded-xl border border-zinc-100 bg-white px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500"
-            />
-          </label>
 
           {fieldError ? (
             <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
