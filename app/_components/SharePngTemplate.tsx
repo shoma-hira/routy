@@ -12,12 +12,17 @@ export type SharePngTemplateProps = {
 
 const textShadow = {
   textShadow:
-    "0 2px 4px rgba(0, 0, 0, 0.55), 0 6px 14px rgba(0, 0, 0, 0.35)",
+    "0 2px 4px rgba(0, 0, 0, 0.75), 0 6px 14px rgba(0, 0, 0, 0.55), 0 12px 28px rgba(0, 0, 0, 0.35)",
 };
 
 const strongTextShadow = {
   textShadow:
-    "0 3px 6px rgba(0, 0, 0, 0.65), 0 8px 18px rgba(0, 0, 0, 0.4)",
+    "0 3px 6px rgba(0, 0, 0, 0.78), 0 8px 18px rgba(0, 0, 0, 0.55), 0 14px 30px rgba(0, 0, 0, 0.38)",
+};
+
+const timelineTextShadow = {
+  textShadow:
+    "0 2px 4px rgba(0, 0, 0, 0.9), 0 6px 12px rgba(0, 0, 0, 0.75), 0 12px 28px rgba(0, 0, 0, 0.55), 0 0 2px rgba(0, 0, 0, 0.95)",
 };
 
 const minchoFont = {
@@ -74,7 +79,7 @@ export function SharePngTemplate({
       <div className="absolute top-9 left-6 h-[132px] w-[310px]">
         <div className="w-[244px]">
           <h1
-            className="w-[252px] leading-[1.14] font-medium tracking-wide text-white/90"
+            className="w-[252px] leading-[1.14] font-semibold tracking-wide text-white/90"
             style={{ ...minchoFont, ...strongTextShadow }}
           >
             {titleLines.map((line, index) => (
@@ -96,8 +101,14 @@ export function SharePngTemplate({
 
         {areaName ? (
           <p
-            className={`absolute top-[72px] right-[-4px] flex h-[88px] w-[88px] items-center justify-center rounded-full border border-white/60 bg-white/5 px-2 text-center leading-none font-semibold tracking-[0.02em] whitespace-nowrap text-white/84 backdrop-blur-[1px] ${getAreaTextSize(areaName)}`}
-            style={textShadow}
+            className={`absolute top-[72px] right-[-4px] flex h-[88px] w-[88px] items-center justify-center rounded-full border border-white/70 px-2 text-center leading-none font-bold tracking-[0.02em] whitespace-nowrap text-white/84 ${getAreaTextSize(areaName)}`}
+            style={{
+              ...textShadow,
+              background:
+                "linear-gradient(rgba(187, 247, 208, 0.32), rgba(187, 247, 208, 0.32)), radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.2) 0 1px, transparent 1.5px), radial-gradient(circle at 70% 68%, rgba(255, 255, 255, 0.16) 0 1px, transparent 1.5px), rgba(255, 255, 255, 0.08)",
+              backdropFilter: "blur(8px) saturate(1.1)",
+              WebkitBackdropFilter: "blur(8px) saturate(1.1)",
+            }}
           >
             {areaName}
           </p>
@@ -119,16 +130,16 @@ export function SharePngTemplate({
               </div>
               <div className="min-w-0">
                 <p
-                  className="pt-0.5 text-left text-[12px] leading-5 font-medium tracking-wide text-white/84"
-                  style={{ ...minchoFont, ...textShadow }}
+                  className="pt-0.5 text-left text-[12px] leading-5 font-semibold tracking-wide text-white/84"
+                  style={{ ...minchoFont, ...timelineTextShadow }}
                 >
                   {getStartTime(item.time)}
                 </p>
                 <p
-                  className="min-w-0 overflow-hidden text-[15px] leading-5 font-medium tracking-wide text-ellipsis whitespace-nowrap text-white/90"
+                  className="min-w-0 overflow-hidden text-[15px] leading-5 font-semibold tracking-wide text-ellipsis whitespace-nowrap text-white/90"
                   style={{
                     ...minchoFont,
-                    ...strongTextShadow,
+                    ...timelineTextShadow,
                     wordBreak: "keep-all",
                   }}
                 >
@@ -144,7 +155,7 @@ export function SharePngTemplate({
         {infoChips.map((chip) => (
           <span
             key={chip}
-            className="rounded-full border border-white/45 bg-white/5 px-3 py-1 text-[11px] font-normal tracking-wide text-white/78 backdrop-blur-[1px]"
+            className="rounded-full border border-white/45 bg-white/5 px-3 py-1 text-[11px] font-medium tracking-wide text-white/78 backdrop-blur-[1px]"
             style={textShadow}
           >
             {chip}
@@ -160,7 +171,7 @@ export function SharePngTemplate({
 
       <footer className="absolute right-0 bottom-7 left-0 text-center">
         <p
-          className="text-[14px] leading-none font-normal tracking-[0.42em] text-white/86"
+          className="text-[14px] leading-none font-medium tracking-[0.42em] text-white/86"
           style={textShadow}
         >
           ROUTY
