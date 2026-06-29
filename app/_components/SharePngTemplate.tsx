@@ -29,26 +29,17 @@ function getStartTime(time: string) {
   return time.split("〜")[0]?.trim() || time;
 }
 
-function splitTitleIntoTwoLines(title: string) {
+function splitTitleByFullWidthSpace(title: string) {
   const trimmedTitle = title.trim() || "休日ルート";
 
   if (trimmedTitle.includes("　")) {
-    const lines = trimmedTitle
+    return trimmedTitle
       .split("　")
       .map((line) => line.trim())
       .filter(Boolean);
-
-    return [lines[0] ?? trimmedTitle, lines.slice(1).join("　") || " "];
   }
 
-  const chars = Array.from(trimmedTitle);
-  if (chars.length <= 1) return [trimmedTitle, " "];
-
-  const splitIndex = Math.ceil(chars.length / 2);
-  return [
-    chars.slice(0, splitIndex).join(""),
-    chars.slice(splitIndex).join("") || " ",
-  ];
+  return [trimmedTitle];
 }
 
 function getAreaName(area: string) {
@@ -71,7 +62,7 @@ export function SharePngTemplate({
   infoChips,
   items,
 }: SharePngTemplateProps) {
-  const [titleFirstLine, titleSecondLine] = splitTitleIntoTwoLines(title);
+  const titleLines = splitTitleByFullWidthSpace(title);
   const areaName = getAreaName(area);
   const timelineItems = items.slice(0, 3);
 
@@ -86,12 +77,20 @@ export function SharePngTemplate({
             className="w-[252px] leading-[1.14] font-medium tracking-wide text-white/90"
             style={{ ...minchoFont, ...strongTextShadow }}
           >
-            <span className="block whitespace-nowrap text-[28px]">
-              {titleFirstLine}
-            </span>
-            <span className="block whitespace-nowrap text-[34px]">
-              {titleSecondLine}
-            </span>
+            {titleLines.map((line, index) => (
+              <span
+                key={`${line}-${index}`}
+                className={`block ${
+                  titleLines.length === 1
+                    ? "text-[27px]"
+                    : index === 0
+                      ? "whitespace-nowrap text-[28px]"
+                      : "whitespace-nowrap text-[34px]"
+                }`}
+              >
+                {line}
+              </span>
+            ))}
           </h1>
         </div>
 
