@@ -10,21 +10,6 @@ export type SharePngTemplateProps = {
   items: SharePngTemplateItem[];
 };
 
-const textShadow = {
-  textShadow:
-    "0 2px 4px rgba(0, 0, 0, 0.75), 0 6px 14px rgba(0, 0, 0, 0.55), 0 12px 28px rgba(0, 0, 0, 0.35)",
-};
-
-const strongTextShadow = {
-  textShadow:
-    "0 3px 6px rgba(0, 0, 0, 0.78), 0 8px 18px rgba(0, 0, 0, 0.55), 0 14px 30px rgba(0, 0, 0, 0.38)",
-};
-
-const timelineTextShadow = {
-  textShadow:
-    "0 2px 4px rgba(0, 0, 0, 0.9), 0 6px 12px rgba(0, 0, 0, 0.75), 0 12px 28px rgba(0, 0, 0, 0.55), 0 0 2px rgba(0, 0, 0, 0.95)",
-};
-
 const minchoFont = {
   fontFamily:
     '"Hiragino Mincho ProN", "Yu Mincho", YuMincho, "Noto Serif JP", serif',
@@ -56,9 +41,9 @@ function getAreaName(area: string) {
 
 function getAreaTextSize(areaName: string) {
   const length = Array.from(areaName).length;
-  if (length <= 4) return "text-[17px]";
-  if (length <= 6) return "text-[14px]";
-  return "text-[11px]";
+  if (length <= 4) return "text-[20px]";
+  if (length <= 6) return "text-[16px]";
+  return "text-[13px]";
 }
 
 export function SharePngTemplate({
@@ -76,21 +61,22 @@ export function SharePngTemplate({
       className="relative aspect-[4/5] w-[360px] max-w-full overflow-hidden bg-transparent text-white/90"
       aria-label="ROUTY share PNG template"
     >
+      <div className="pngTopGradient absolute inset-x-0 top-0 h-[155px]" />
       <div className="absolute top-9 left-6 h-[132px] w-[310px]">
         <div className="w-[244px]">
           <h1
-            className="w-[252px] leading-[1.14] font-semibold tracking-wide text-white/90"
-            style={{ ...minchoFont, ...strongTextShadow }}
+            className="pngTitleShadow w-[252px] leading-[1.08] font-bold tracking-wide text-white/90"
+            style={minchoFont}
           >
             {titleLines.map((line, index) => (
               <span
                 key={`${line}-${index}`}
                 className={`block ${
                   titleLines.length === 1
-                    ? "text-[27px]"
+                    ? "text-[31px]"
                     : index === 0
-                      ? "whitespace-nowrap text-[28px]"
-                      : "whitespace-nowrap text-[34px]"
+                      ? "whitespace-nowrap text-[32px]"
+                      : "whitespace-nowrap text-[40px]"
                 }`}
               >
                 {line}
@@ -101,14 +87,7 @@ export function SharePngTemplate({
 
         {areaName ? (
           <p
-            className={`absolute top-[72px] right-[-4px] flex h-[88px] w-[88px] items-center justify-center rounded-full border border-white/70 px-2 text-center leading-none font-bold tracking-[0.02em] whitespace-nowrap text-white/84 ${getAreaTextSize(areaName)}`}
-            style={{
-              ...textShadow,
-              background:
-                "linear-gradient(rgba(187, 247, 208, 0.32), rgba(187, 247, 208, 0.32)), radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.2) 0 1px, transparent 1.5px), radial-gradient(circle at 70% 68%, rgba(255, 255, 255, 0.16) 0 1px, transparent 1.5px), rgba(255, 255, 255, 0.08)",
-              backdropFilter: "blur(8px) saturate(1.1)",
-              WebkitBackdropFilter: "blur(8px) saturate(1.1)",
-            }}
+            className={`pngTextShadow pngAreaBackdrop absolute top-[72px] right-[-4px] flex h-[88px] w-[88px] items-center justify-center rounded-full px-2 text-center leading-none font-bold tracking-[0.02em] whitespace-nowrap text-white/84 ${getAreaTextSize(areaName)}`}
           >
             {areaName}
           </p>
@@ -130,16 +109,15 @@ export function SharePngTemplate({
               </div>
               <div className="min-w-0">
                 <p
-                  className="pt-0.5 text-left text-[12px] leading-5 font-semibold tracking-wide text-white/84"
-                  style={{ ...minchoFont, ...timelineTextShadow }}
+                  className="pngSmallTextShadow pt-0.5 text-left text-[13px] leading-5 font-semibold tracking-wide text-white/84"
+                  style={minchoFont}
                 >
                   {getStartTime(item.time)}
                 </p>
                 <p
-                  className="min-w-0 overflow-hidden text-[15px] leading-5 font-semibold tracking-wide text-ellipsis whitespace-nowrap text-white/90"
+                  className="pngTextShadow min-w-0 overflow-hidden text-[17px] leading-5 font-bold tracking-wide text-ellipsis whitespace-nowrap text-white/90"
                   style={{
                     ...minchoFont,
-                    ...timelineTextShadow,
                     wordBreak: "keep-all",
                   }}
                 >
@@ -155,8 +133,7 @@ export function SharePngTemplate({
         {infoChips.map((chip) => (
           <span
             key={chip}
-            className="rounded-full border border-white/45 bg-white/5 px-3 py-1 text-[11px] font-medium tracking-wide text-white/78 backdrop-blur-[1px]"
-            style={textShadow}
+            className="pngSmallTextShadow rounded-full border border-white/45 bg-white/5 px-3 py-1 text-[12px] font-semibold tracking-wide text-white/78"
           >
             {chip}
           </span>
@@ -171,8 +148,7 @@ export function SharePngTemplate({
 
       <footer className="absolute right-0 bottom-7 left-0 text-center">
         <p
-          className="text-[14px] leading-none font-medium tracking-[0.42em] text-white/86"
-          style={textShadow}
+          className="pngTextShadow text-[15px] leading-none font-medium tracking-[0.42em] text-white/86"
         >
           ROUTY
         </p>

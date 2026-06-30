@@ -25,3 +25,43 @@ textarea,
 select {
   -webkit-tap-highlight-color: transparent;
 }
+
+.pngTitleShadow {
+  text-shadow:
+    0 2px 3px rgba(0, 0, 0, 0.95),
+    0 5px 10px rgba(0, 0, 0, 0.75),
+    0 0 1px rgba(0, 0, 0, 1);
+}
+
+.pngTextShadow {
+  text-shadow:
+    0 2px 3px rgba(0, 0, 0, 0.9),
+    0 4px 8px rgba(0, 0, 0, 0.7),
+    0 0 1px rgba(0, 0, 0, 1);
+}
+
+.pngSmallTextShadow {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 3px 6px rgba(0, 0, 0, 0.75),
+    0 0 1px rgba(0, 0, 0, 1);
+}
+
+.pngAreaBackdrop {
+  background:
+    linear-gradient(rgba(187, 247, 208, 0.28), rgba(187, 247, 208, 0.28)),
+    rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.24),
+    inset 0 0 18px rgba(255, 255, 255, 0.12);
+}
+
+.pngTopGradient {
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.48),
+    rgba(0, 0, 0, 0.18),
+    rgba(0, 0, 0, 0)
+  );
+}
