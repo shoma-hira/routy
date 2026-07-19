@@ -78,10 +78,11 @@ export function PostCard({
               src={post.coverImage}
               alt={`${post.title}のサムネイル画像`}
               fill
-              unoptimized
               loading="lazy"
+              decoding="async"
+              quality={60}
               sizes="calc((min(100vw, 430px) - 44px) / 2)"
-              className="object-cover"
+              className="pointer-events-none object-cover"
             />
           ) : (
             <div

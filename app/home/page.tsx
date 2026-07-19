@@ -175,7 +175,13 @@ function SearchIcon() {
   );
 }
 
-function PostCard({ post }: { post: HomePost }) {
+function PostCard({
+  post,
+  imagePriority = false,
+}: {
+  post: HomePost;
+  imagePriority?: boolean;
+}) {
   const areaLabel = post.area ? `${post.area}エリア` : "エリア未設定";
   const titleLines = splitTitleByFullWidthSpace(post.title);
   const infoLabels = [
@@ -194,10 +200,12 @@ function PostCard({ post }: { post: HomePost }) {
               src={post.coverImage}
               alt={`${post.title}のサムネイル画像`}
               fill
-              unoptimized
-              loading="lazy"
+              preload={imagePriority}
+              loading={imagePriority ? undefined : "lazy"}
+              decoding="async"
+              quality={60}
               sizes="calc((min(100vw, 430px) - 44px) / 2)"
-              className="object-cover"
+              className="pointer-events-none object-cover"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center px-3 text-center text-[11px] font-semibold leading-5 text-[#057A55]/60">
@@ -366,8 +374,8 @@ export default function HomePage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-[calc(9rem+env(safe-area-inset-bottom))]">
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} />
+          {posts.map((post, index) => (
+            <PostCard key={post.id} post={post} imagePriority={index === 0} />
           ))}
         </div>
       )}
