@@ -79,6 +79,7 @@ export function PostCard({
               alt={`${post.title}のサムネイル画像`}
               fill
               unoptimized
+              loading="lazy"
               sizes="calc((min(100vw, 430px) - 44px) / 2)"
               className="object-cover"
             />

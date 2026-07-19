@@ -31,6 +31,10 @@ export async function getCurrentUserId() {
 export async function isFollowing(targetUserId: string) {
   const currentUserId = await getCurrentUserId();
 
+  return isFollowingForUser(currentUserId, targetUserId);
+}
+
+export async function isFollowingForUser(currentUserId: string, targetUserId: string) {
   if (currentUserId === targetUserId) {
     return false;
   }

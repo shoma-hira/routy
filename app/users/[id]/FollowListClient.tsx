@@ -58,9 +58,11 @@ function BackIcon() {
 function UserListItem({
   profile,
   currentUserId,
+  initialIsFollowing,
 }: {
   profile: ProfileRow;
   currentUserId: string | null;
+  initialIsFollowing: boolean;
 }) {
   const displayName = getDisplayName(profile);
   const isOwnUser = currentUserId === profile.id;
@@ -91,7 +93,13 @@ function UserListItem({
           </p>
         </div>
       </Link>
-      {!isOwnUser ? <FollowButton targetUserId={profile.id} /> : null}
+      {!isOwnUser ? (
+        <FollowButton
+          targetUserId={profile.id}
+          currentUserId={currentUserId}
+          initialIsFollowing={initialIsFollowing}
+        />
+      ) : null}
     </div>
   );
 }
@@ -106,6 +114,7 @@ export function FollowListClient({
   const router = useRouter();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
+  const [currentFollowingUserIds, setCurrentFollowingUserIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -120,45 +129,49 @@ export function FollowListClient({
 
       try {
         const loginUserId = await getCurrentUserId();
-        const { data: ownerProfile, error: ownerError } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("id", userId)
-          .maybeSingle();
+        const [ownerResult, userIds] = await Promise.all([
+          supabase.from("profiles").select("id").eq("id", userId).maybeSingle(),
+          type === "followers"
+            ? getFollowerUserIds(userId)
+            : getFollowingUserIds(userId),
+        ]);
 
-        if (ownerError) throw ownerError;
+        if (ownerResult.error) throw ownerResult.error;
 
-        if (!ownerProfile) {
+        if (!ownerResult.data) {
           if (isMounted) {
             setCurrentUserId(loginUserId);
             setProfiles([]);
+            setCurrentFollowingUserIds([]);
             setNotFound(true);
           }
           return;
         }
 
-        const userIds =
-          type === "followers"
-            ? await getFollowerUserIds(userId)
-            : await getFollowingUserIds(userId);
-
         if (userIds.length === 0) {
           if (isMounted) {
             setCurrentUserId(loginUserId);
             setProfiles([]);
+            setCurrentFollowingUserIds([]);
           }
           return;
         }
 
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id,display_name,avatar_url")
-          .in("id", userIds);
+        const [profilesResult, currentFollowingIds] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("id,display_name,avatar_url")
+            .in("id", userIds),
+          getFollowingUserIds(loginUserId),
+        ]);
 
-        if (error) throw error;
+        if (profilesResult.error) throw profilesResult.error;
 
         const profilesById = new Map(
-          ((data ?? []) as ProfileRow[]).map((profile) => [profile.id, profile]),
+          ((profilesResult.data ?? []) as ProfileRow[]).map((profile) => [
+            profile.id,
+            profile,
+          ]),
         );
         const orderedProfiles = userIds
           .map((id) => profilesById.get(id))
@@ -167,12 +180,14 @@ export function FollowListClient({
         if (isMounted) {
           setCurrentUserId(loginUserId);
           setProfiles(orderedProfiles);
+          setCurrentFollowingUserIds(currentFollowingIds);
         }
       } catch (error) {
         console.error("ROUTY follow list load failed", error);
         if (isMounted) {
           setErrorMessage(getErrorMessage(error));
           setProfiles([]);
+          setCurrentFollowingUserIds([]);
         }
       } finally {
         if (isMounted) {
@@ -193,6 +208,8 @@ export function FollowListClient({
     type === "followers"
       ? "まだフォロワーはいません"
       : "まだ誰もフォローしていません";
+
+  const currentFollowingUserIdSet = new Set(currentFollowingUserIds);
 
   function handleBack() {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -246,6 +263,7 @@ export function FollowListClient({
                 key={profile.id}
                 profile={profile}
                 currentUserId={currentUserId}
+                initialIsFollowing={currentFollowingUserIdSet.has(profile.id)}
               />
             ))}
           </div>

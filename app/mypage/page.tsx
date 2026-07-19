@@ -18,15 +18,12 @@ type ActiveTab = "created" | "saved";
 
 type PostRow = {
   id: string;
-  user_id: string;
   title: string;
   area: string | null;
   transport_type: string | null;
   companion_type: string | null;
   budget: number | null;
   cover_image_url: string | null;
-  type: string | null;
-  created_at: string;
 };
 
 type ProfileRow = {
@@ -208,7 +205,7 @@ export default function MyPage() {
           supabase
             .from("posts")
             .select(
-              "id,user_id,title,area,transport_type,companion_type,budget,cover_image_url,type,created_at",
+              "id,title,area,transport_type,companion_type,budget,cover_image_url",
             )
             .eq("user_id", currentUserId)
             .order("created_at", { ascending: false }),
@@ -237,7 +234,7 @@ export default function MyPage() {
           const { data: savedPostData, error: savedPostError } = await supabase
             .from("posts")
             .select(
-              "id,user_id,title,area,transport_type,companion_type,budget,cover_image_url,type,created_at",
+              "id,title,area,transport_type,companion_type,budget,cover_image_url",
             )
             .in("id", savedPostIds)
             .eq("is_published", true);

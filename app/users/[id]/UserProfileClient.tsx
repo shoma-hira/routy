@@ -20,15 +20,12 @@ type ProfileRow = {
 
 type PostRow = {
   id: string;
-  user_id: string;
   title: string;
   area: string | null;
   transport_type: string | null;
   companion_type: string | null;
   budget: number | null;
   cover_image_url: string | null;
-  type: string | null;
-  created_at: string;
 };
 
 type ScheduleItemRow = {
@@ -214,7 +211,7 @@ export function UserProfileClient({ userId }: { userId: string }) {
           supabase
             .from("posts")
             .select(
-              "id,user_id,title,area,transport_type,companion_type,budget,cover_image_url,type,created_at",
+              "id,title,area,transport_type,companion_type,budget,cover_image_url",
             )
             .eq("user_id", userId)
             .eq("is_published", true)
@@ -387,7 +384,7 @@ export function UserProfileClient({ userId }: { userId: string }) {
 
               {!isOwnProfile ? (
                 <div className="mt-5 flex justify-center">
-                  <FollowButton targetUserId={userId} />
+                  <FollowButton targetUserId={userId} currentUserId={currentUserId} />
                 </div>
               ) : null}
             </section>

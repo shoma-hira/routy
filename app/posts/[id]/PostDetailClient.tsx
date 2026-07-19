@@ -347,11 +347,20 @@ export function PostDetailClient({ postId }: { postId: string }) {
       try {
         const currentUserId = await getCurrentUserId();
         let currentRole: ProfileRole = "user";
-        const currentProfileResult = await supabase
-          .from("profiles")
-          .select("id,role")
-          .eq("id", currentUserId)
-          .maybeSingle();
+        const [currentProfileResult, postResult] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("id,role")
+            .eq("id", currentUserId)
+            .maybeSingle(),
+          supabase
+            .from("posts")
+            .select(
+              "id,user_id,title,area,transport_type,companion_type,budget,caption,cover_image_url,is_published,created_at",
+            )
+            .eq("id", postId)
+            .maybeSingle(),
+        ]);
 
         if (
           currentProfileResult.error &&
@@ -364,23 +373,17 @@ export function PostDetailClient({ postId }: { postId: string }) {
           currentRole = normalizeProfileRole(currentProfileResult.data?.role);
         }
 
-        const { data: post, error: postError } = await supabase
-          .from("posts")
-          .select(
-            "id,user_id,title,area,transport_type,companion_type,budget,caption,cover_image_url,is_published,created_at",
-          )
-          .eq("id", postId)
-          .maybeSingle();
+        if (postResult.error) throw postResult.error;
 
-        if (postError) throw postError;
-
-        if (!post) {
+        if (!postResult.data) {
           if (isMounted) {
             setDetail(null);
             setNotFound(true);
           }
           return;
         }
+
+        const post = postResult.data as PostRow;
 
         if (!post.is_published && post.user_id !== currentUserId && currentRole !== "admin") {
           if (isMounted) {
@@ -390,7 +393,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
           return;
         }
 
-        const [profileResult, scheduleResult] = await Promise.all([
+        const [profileResult, scheduleResult, savedResult] = await Promise.all([
           supabase
             .from("profiles")
             .select("id,display_name,avatar_url")
@@ -404,19 +407,19 @@ export function PostDetailClient({ postId }: { postId: string }) {
             .eq("post_id", post.id)
             .order("sort_order", { ascending: true })
             .order("created_at", { ascending: true }),
+          isPostSaved(currentUserId, post.id)
         ]);
 
         if (profileResult.error) throw profileResult.error;
         if (scheduleResult.error) throw scheduleResult.error;
 
         const nextDetail = {
-          post: post as PostRow,
+          post,
           profile: profileResult.data as ProfileRow | null,
           scheduleItems: sortScheduleItems(
             (scheduleResult.data ?? []) as ScheduleItemRow[],
           ),
         };
-        const nextIsSaved = await isPostSaved(currentUserId, post.id);
 
         console.log("ROUTY post detail loaded", {
           postId: post.id,
@@ -426,7 +429,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
         if (isMounted) {
           setUserId(currentUserId);
           setCurrentUserRole(currentRole);
-          setIsSaved(nextIsSaved);
+          setIsSaved(savedResult);
           setDetail(nextDetail);
         }
       } catch (error) {
@@ -852,7 +855,7 @@ function OverviewSlide({
             </div>
           </Link>
           {currentUserId !== post.user_id ? (
-            <FollowButton targetUserId={post.user_id} />
+            <FollowButton targetUserId={post.user_id} currentUserId={currentUserId} />
           ) : null}
         </section>
 

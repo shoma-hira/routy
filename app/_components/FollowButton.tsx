@@ -5,10 +5,19 @@ import {
   followUser,
   getCurrentUserId,
   isFollowing,
+  isFollowingForUser,
   unfollowUser,
 } from "@/lib/follows";
 
-export function FollowButton({ targetUserId }: { targetUserId: string }) {
+export function FollowButton({
+  targetUserId,
+  currentUserId,
+  initialIsFollowing,
+}: {
+  targetUserId: string;
+  currentUserId?: string | null;
+  initialIsFollowing?: boolean;
+}) {
   const [isCurrentUserTarget, setIsCurrentUserTarget] = useState(false);
   const [isFollowed, setIsFollowed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -23,8 +32,8 @@ export function FollowButton({ targetUserId }: { targetUserId: string }) {
       setErrorMessage(null);
 
       try {
-        const currentUserId = await getCurrentUserId();
-        const isSelf = currentUserId === targetUserId;
+        const loginUserId = currentUserId ?? (await getCurrentUserId());
+        const isSelf = loginUserId === targetUserId;
 
         if (!isMounted) return;
 
@@ -35,7 +44,12 @@ export function FollowButton({ targetUserId }: { targetUserId: string }) {
           return;
         }
 
-        const nextIsFollowed = await isFollowing(targetUserId);
+        const nextIsFollowed =
+          initialIsFollowing !== undefined
+            ? initialIsFollowing
+            : currentUserId
+              ? await isFollowingForUser(loginUserId, targetUserId)
+              : await isFollowing(targetUserId);
 
         if (isMounted) {
           setIsFollowed(nextIsFollowed);
@@ -57,7 +71,7 @@ export function FollowButton({ targetUserId }: { targetUserId: string }) {
     return () => {
       isMounted = false;
     };
-  }, [targetUserId]);
+  }, [currentUserId, initialIsFollowing, targetUserId]);
 
   async function handleToggleFollow() {
     if (isLoading || isMutating || isCurrentUserTarget) return;

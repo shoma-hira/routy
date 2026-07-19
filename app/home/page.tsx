@@ -12,16 +12,12 @@ const categoryTags = ["# ランニング", "# サウナ", "# カフェ", "# デ�
 
 type PostRow = {
   id: string;
-  user_id: string;
   title: string;
   area: string | null;
   transport_type: string | null;
   companion_type: string | null;
   budget: number | null;
   cover_image_url: string | null;
-  type: string | null;
-  is_published: boolean;
-  created_at: string;
 };
 
 type ScheduleItemRow = {
@@ -199,6 +195,7 @@ function PostCard({ post }: { post: HomePost }) {
               alt={`${post.title}のサムネイル画像`}
               fill
               unoptimized
+              loading="lazy"
               sizes="calc((min(100vw, 430px) - 44px) / 2)"
               className="object-cover"
             />
@@ -258,19 +255,20 @@ export default function HomePage() {
       setErrorMessage(null);
 
       try {
-        await getCurrentUserId();
+        const [, postsResult] = await Promise.all([
+          getCurrentUserId(),
+          supabase
+            .from("posts")
+            .select(
+              "id,title,area,transport_type,companion_type,budget,cover_image_url",
+            )
+            .eq("is_published", true)
+            .order("created_at", { ascending: false }),
+        ]);
 
-        const { data: postRows, error: postsError } = await supabase
-          .from("posts")
-          .select(
-            "id,user_id,title,area,transport_type,companion_type,budget,cover_image_url,type,is_published,created_at",
-          )
-          .eq("is_published", true)
-          .order("created_at", { ascending: false });
+        if (postsResult.error) throw postsResult.error;
 
-        if (postsError) throw postsError;
-
-        const publishedPosts = (postRows ?? []) as PostRow[];
+        const publishedPosts = (postsResult.data ?? []) as PostRow[];
         const postIds = publishedPosts.map((post) => post.id);
         let scheduleItemsByPostId = new Map<string, ScheduleItemRow[]>();
 
