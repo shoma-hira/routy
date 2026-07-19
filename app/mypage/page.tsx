@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "../_components/AppShell";
 import { LogoutButton } from "../_components/LogoutButton";
@@ -10,6 +11,7 @@ import {
   getCurrentUserId,
   getReadableSupabaseError,
 } from "@/lib/savedPosts";
+import { getFollowCounts } from "@/lib/follows";
 import { formatRouteDuration, parseDurationMinutes } from "@/lib/routeTime";
 
 type ActiveTab = "created" | "saved";
@@ -48,8 +50,17 @@ type ScheduleItemRow = {
   created_at: string | null;
 };
 
+type FollowCounts = {
+  followingCount: number;
+  followerCount: number;
+};
+
 function getErrorMessage(error: unknown) {
   return getReadableSupabaseError(error, "投稿を読み込めませんでした。");
+}
+
+function getFollowCountsErrorMessage(error: unknown) {
+  return getReadableSupabaseError(error, "フォロー情報を読み込めませんでした。");
 }
 
 function getDisplayName(profile: ProfileRow | null) {
@@ -171,6 +182,8 @@ export default function MyPage() {
   const [myPosts, setMyPosts] = useState<PostCardPost[]>([]);
   const [savedPostList, setSavedPostList] = useState<PostCardPost[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [followCounts, setFollowCounts] = useState<FollowCounts | null>(null);
+  const [followCountsError, setFollowCountsError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -180,11 +193,13 @@ export default function MyPage() {
     async function loadMyPage() {
       setIsLoading(true);
       setErrorMessage(null);
+      setFollowCounts(null);
+      setFollowCountsError(null);
 
       try {
         const currentUserId = await getCurrentUserId();
 
-        const [profileResult, postsResult, savedResult] = await Promise.all([
+        const [profileResult, postsResult, savedResult, followCountsResult] = await Promise.all([
           supabase
             .from("profiles")
             .select("id,display_name,avatar_url")
@@ -202,6 +217,9 @@ export default function MyPage() {
             .select("post_id,created_at")
             .eq("user_id", currentUserId)
             .order("created_at", { ascending: false }),
+          getFollowCounts(currentUserId)
+            .then((data) => ({ data, error: null }))
+            .catch((error: unknown) => ({ data: null, error })),
         ]);
 
         if (profileResult.error) throw profileResult.error;
@@ -277,6 +295,12 @@ export default function MyPage() {
           setProfile(profileResult.data as ProfileRow | null);
           setMyPosts(createdPosts);
           setSavedPostList(savedPosts);
+          setFollowCounts(followCountsResult.data);
+          setFollowCountsError(
+            followCountsResult.error
+              ? getFollowCountsErrorMessage(followCountsResult.error)
+              : null,
+          );
         }
       } catch (error) {
         console.error("ROUTY my page load failed", error);
@@ -285,6 +309,8 @@ export default function MyPage() {
           setProfile(null);
           setMyPosts([]);
           setSavedPostList([]);
+          setFollowCounts(null);
+          setFollowCountsError(null);
         }
       } finally {
         if (isMounted) {
@@ -353,6 +379,39 @@ export default function MyPage() {
             {profileText}
           </p>
 
+          {userId ? (
+            <div className="mt-4">
+              {followCountsError ? (
+                <p className="mx-auto max-w-[320px] rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
+                  {followCountsError}
+                </p>
+              ) : (
+                <div className="flex justify-center gap-10">
+                  <Link href={`/users/${userId}/following`} className="block">
+                    <p className="text-lg font-bold text-zinc-950">
+                      {followCounts
+                        ? followCounts.followingCount.toLocaleString("ja-JP")
+                        : "..."}
+                    </p>
+                    <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                      フォロー中
+                    </p>
+                  </Link>
+                  <Link href={`/users/${userId}/followers`} className="block">
+                    <p className="text-lg font-bold text-zinc-950">
+                      {followCounts
+                        ? followCounts.followerCount.toLocaleString("ja-JP")
+                        : "..."}
+                    </p>
+                    <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                      フォロワー
+                    </p>
+                  </Link>
+                </div>
+              )}
+            </div>
+          ) : null}
+
           <button
             type="button"
             disabled
@@ -360,6 +419,15 @@ export default function MyPage() {
           >
             プロフィールを編集
           </button>
+
+          {userId ? (
+            <Link
+              href={`/users/${userId}`}
+              className="mx-auto mt-3 block w-fit text-sm font-semibold text-[#057A55]"
+            >
+              公開プロフィールを見る
+            </Link>
+          ) : null}
         </section>
 
         <section className="mt-7">

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toPng } from "html-to-image";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "../../_components/AppShell";
+import { FollowButton } from "../../_components/FollowButton";
 import { SharePngTemplate } from "../../_components/SharePngTemplate";
 import { formatAreaLabel } from "@/lib/area";
 import {
@@ -85,6 +86,14 @@ function isMissingRoleColumn(error: unknown) {
   const message = getReadableSupabaseError(error, "").toLowerCase();
 
   return message.includes("role") && message.includes("column");
+}
+
+function getProfileDisplayName(profile: ProfileRow | null) {
+  return profile?.display_name?.trim() || "ROUTY User";
+}
+
+function getProfileInitial(displayName: string) {
+  return displayName.trim().charAt(0).toUpperCase() || "R";
 }
 
 function getStartMinutes(item: ScheduleItemRow) {
@@ -681,6 +690,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
             >
               <OverviewSlide
                 detail={detail}
+                currentUserId={userId}
                 activeIndex={activeIndex}
                 onSelectSlide={goToSlide}
               />
@@ -743,10 +753,12 @@ function SlideDots({
 
 function OverviewSlide({
   detail,
+  currentUserId,
   activeIndex,
   onSelectSlide,
 }: {
   detail: DetailState;
+  currentUserId: string | null;
   activeIndex: number;
   onSelectSlide: (index: number) => void;
 }) {
@@ -760,6 +772,8 @@ function OverviewSlide({
   ].filter(Boolean) as string[];
   const caption = post.caption?.trim();
   const titleLines = splitTitleByFullWidthSpace(post.title);
+  const profileName = getProfileDisplayName(detail.profile);
+  const profileHref = `/users/${post.user_id}`;
 
   return (
     <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white pb-2">
@@ -811,6 +825,36 @@ function OverviewSlide({
             ))}
           </div>
         ) : null}
+
+        <section className="mt-6 flex items-center justify-between gap-3 border-t border-zinc-100 pt-5">
+          <Link href={profileHref} className="flex min-w-0 items-center gap-3">
+            <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-zinc-950">
+              {detail.profile?.avatar_url?.trim() ? (
+                <Image
+                  src={detail.profile.avatar_url.trim()}
+                  alt={`${profileName}のプロフィール画像`}
+                  fill
+                  unoptimized
+                  sizes="44px"
+                  className="object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-base font-bold text-white">
+                  {getProfileInitial(profileName)}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-[#111827]">{profileName}</p>
+              <p className="mt-0.5 truncate text-xs font-medium text-zinc-500">
+                @{post.user_id.slice(0, 8)}
+              </p>
+            </div>
+          </Link>
+          {currentUserId !== post.user_id ? (
+            <FollowButton targetUserId={post.user_id} />
+          ) : null}
+        </section>
 
         {caption ? (
           <section className="mt-7 border-t border-zinc-100 pt-6">
