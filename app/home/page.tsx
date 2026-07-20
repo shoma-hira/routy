@@ -321,6 +321,7 @@ export default function HomePage() {
       } finally {
         if (isMounted) {
           setIsLoading(false);
+          window.dispatchEvent(new Event("routy:app-ready"));
         }
       }
     }

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AppSplash } from "./_components/AppSplash";
 import { AuthProvider } from "./_components/AuthProvider";
 import "./globals.css";
 
@@ -13,15 +14,19 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const appDescription =
+  "\u4EBA\u306E\u4F11\u65E5\u306E\u52D5\u304D\u65B9\u3092\u30D5\u30A9\u30ED\u30FC\u3057\u3066\u3001\u771F\u4F3C\u3067\u304D\u308BSNS";
+
 export const metadata: Metadata = {
   applicationName: "ROUTY",
   title: "ROUTY",
-  description: "人の休日の動き方をフォローして、真似できるSNS",
+  description: appDescription,
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512x512.png", sizes: "512x512", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
@@ -33,7 +38,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#69B7E8",
+  themeColor: "#28B83F",
 };
 
 export default function RootLayout({
@@ -44,7 +49,10 @@ export default function RootLayout({
   return (
     <html lang="ja" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {children}
+          <AppSplash />
+        </AuthProvider>
       </body>
     </html>
   );
