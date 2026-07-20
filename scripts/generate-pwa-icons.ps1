@@ -135,10 +135,44 @@ function Save-Icon([System.Drawing.Bitmap]$sourceBitmap, [System.Drawing.Rectang
   $canvas.Dispose()
 }
 
+function Save-StartupImage([System.Drawing.Bitmap]$sourceBitmap, [System.Drawing.Rectangle]$trimBounds, [string]$path, [int]$width, [int]$height) {
+  $canvas = New-Object System.Drawing.Bitmap($width, $height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $canvas.SetResolution(144, 144)
+  $graphics = [System.Drawing.Graphics]::FromImage($canvas)
+  $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+  $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  $graphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+
+  $rect = New-Object System.Drawing.Rectangle(0, 0, $width, $height)
+  $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+    $rect,
+    [System.Drawing.Color]::FromArgb(255, 183, 230, 0),
+    [System.Drawing.Color]::FromArgb(255, 0, 152, 93),
+    [System.Drawing.Drawing2D.LinearGradientMode]::ForwardDiagonal
+  )
+  $graphics.FillRectangle($brush, $rect)
+
+  $iconSize = [Math]::Round([Math]::Min($width, $height) * 0.34)
+  $x = [Math]::Round(($width - $iconSize) / 2)
+  $y = [Math]::Round(($height - $iconSize) / 2)
+  $targetRect = New-Object System.Drawing.Rectangle($x, $y, $iconSize, $iconSize)
+  $graphics.DrawImage($sourceBitmap, $targetRect, $trimBounds, [System.Drawing.GraphicsUnit]::Pixel)
+
+  $canvas.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+
+  $brush.Dispose()
+  $graphics.Dispose()
+  $canvas.Dispose()
+}
+
 $sourceImage = [System.Drawing.Image]::FromFile($source.FullName)
 $sourceBitmap = New-Object System.Drawing.Bitmap($sourceImage)
 $processedBitmap = Remove-EdgeWhite $sourceBitmap
 $trimBounds = Get-TrimBounds $processedBitmap
+
+$startupDir = Join-Path $root "public\startup"
+New-Item -ItemType Directory -Force -Path $startupDir | Out-Null
 
 Save-Icon $processedBitmap $trimBounds (Join-Path $iconsDir "icon-192x192.png") 192 0.96
 Save-Icon $processedBitmap $trimBounds (Join-Path $iconsDir "icon-512x512.png") 512 0.96
@@ -146,6 +180,12 @@ Save-Icon $processedBitmap $trimBounds (Join-Path $root "public\apple-touch-icon
 Save-Icon $processedBitmap $trimBounds (Join-Path $iconsDir "icon-maskable-192x192.png") 192 0.78
 Save-Icon $processedBitmap $trimBounds (Join-Path $iconsDir "icon-maskable-512x512.png") 512 0.78
 Save-Icon $processedBitmap $trimBounds (Join-Path $root "public\favicon-32x32.png") 32 0.96
+Save-StartupImage $processedBitmap $trimBounds (Join-Path $startupDir "apple-splash-1290x2796.png") 1290 2796
+Save-StartupImage $processedBitmap $trimBounds (Join-Path $startupDir "apple-splash-1179x2556.png") 1179 2556
+Save-StartupImage $processedBitmap $trimBounds (Join-Path $startupDir "apple-splash-1170x2532.png") 1170 2532
+Save-StartupImage $processedBitmap $trimBounds (Join-Path $startupDir "apple-splash-1125x2436.png") 1125 2436
+Save-StartupImage $processedBitmap $trimBounds (Join-Path $startupDir "apple-splash-828x1792.png") 828 1792
+Save-StartupImage $processedBitmap $trimBounds (Join-Path $startupDir "apple-splash-750x1334.png") 750 1334
 
 $processedBitmap.Dispose()
 $sourceBitmap.Dispose()

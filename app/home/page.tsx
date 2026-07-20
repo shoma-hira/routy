@@ -321,7 +321,11 @@ export default function HomePage() {
       } finally {
         if (isMounted) {
           setIsLoading(false);
-          window.dispatchEvent(new Event("routy:app-ready"));
+          try {
+            window.dispatchEvent(new Event("routy:app-ready"));
+          } catch (error) {
+            console.error("ROUTY home ready event failed", error);
+          }
         }
       }
     }
