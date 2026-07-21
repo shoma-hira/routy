@@ -2,17 +2,15 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "../_components/AppShell";
 import { LogoutButton } from "../_components/LogoutButton";
 import { PostCard, type PostCardPost } from "../_components/PostCard";
-import { supabase } from "@/lib/supabase";
-import {
-  getCurrentUserId,
-  getReadableSupabaseError,
-} from "@/lib/savedPosts";
 import { getFollowCounts } from "@/lib/follows";
+import { getCurrentProfile, type CurrentProfile } from "@/lib/profiles";
 import { formatRouteDuration, parseDurationMinutes } from "@/lib/routeTime";
+import { getCurrentUserId, getReadableSupabaseError } from "@/lib/savedPosts";
+import { supabase } from "@/lib/supabase";
 
 type ActiveTab = "created" | "saved";
 
@@ -24,12 +22,6 @@ type PostRow = {
   companion_type: string | null;
   budget: number | null;
   cover_image_url: string | null;
-};
-
-type ProfileRow = {
-  id: string;
-  display_name: string | null;
-  avatar_url: string | null;
 };
 
 type SavedPostRow = {
@@ -53,25 +45,15 @@ type FollowCounts = {
 };
 
 function getErrorMessage(error: unknown) {
-  return getReadableSupabaseError(error, "投稿を読み込めませんでした。");
+  return getReadableSupabaseError(error, "マイページを読み込めませんでした。");
 }
 
-function getFollowCountsErrorMessage(error: unknown) {
-  return getReadableSupabaseError(error, "フォロー情報を読み込めませんでした。");
-}
-
-function getDisplayName(profile: ProfileRow | null) {
+function getDisplayName(profile: CurrentProfile | null) {
   return profile?.display_name?.trim() || "ROUTY User";
 }
 
-function getUserHandle(userId: string | null) {
-  const fallbackId = userId ? userId.slice(0, 8) : "";
-
-  return fallbackId ? `@${fallbackId}` : "";
-}
-
 function getInitial(displayName: string) {
-  return displayName.trim().charAt(0).toUpperCase() || "R";
+  return Array.from(displayName.trim())[0]?.toUpperCase() || "R";
 }
 
 function toMinutes(time?: string | null) {
@@ -175,14 +157,14 @@ function groupScheduleItemsByPostId(items: ScheduleItemRow[]) {
 
 export default function MyPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("created");
-  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [profile, setProfile] = useState<CurrentProfile | null>(null);
   const [myPosts, setMyPosts] = useState<PostCardPost[]>([]);
   const [savedPostList, setSavedPostList] = useState<PostCardPost[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
   const [followCounts, setFollowCounts] = useState<FollowCounts | null>(null);
-  const [followCountsError, setFollowCountsError] = useState<string | null>(null);
+  const [followCountsError, setFollowCountsError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -191,35 +173,30 @@ export default function MyPage() {
       setIsLoading(true);
       setErrorMessage(null);
       setFollowCounts(null);
-      setFollowCountsError(null);
+      setFollowCountsError(false);
 
       try {
         const currentUserId = await getCurrentUserId();
+        const [currentProfile, postsResult, savedResult, followCountsResult] =
+          await Promise.all([
+            getCurrentProfile(),
+            supabase
+              .from("posts")
+              .select(
+                "id,title,area,transport_type,companion_type,budget,cover_image_url",
+              )
+              .eq("user_id", currentUserId)
+              .order("created_at", { ascending: false }),
+            supabase
+              .from("saved_posts")
+              .select("post_id,created_at")
+              .eq("user_id", currentUserId)
+              .order("created_at", { ascending: false }),
+            getFollowCounts(currentUserId)
+              .then((data) => ({ data, error: null }))
+              .catch((error: unknown) => ({ data: null, error })),
+          ]);
 
-        const [profileResult, postsResult, savedResult, followCountsResult] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("id,display_name,avatar_url")
-            .eq("id", currentUserId)
-            .maybeSingle(),
-          supabase
-            .from("posts")
-            .select(
-              "id,title,area,transport_type,companion_type,budget,cover_image_url",
-            )
-            .eq("user_id", currentUserId)
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("saved_posts")
-            .select("post_id,created_at")
-            .eq("user_id", currentUserId)
-            .order("created_at", { ascending: false }),
-          getFollowCounts(currentUserId)
-            .then((data) => ({ data, error: null }))
-            .catch((error: unknown) => ({ data: null, error })),
-        ]);
-
-        if (profileResult.error) throw profileResult.error;
         if (postsResult.error) throw postsResult.error;
         if (savedResult.error) throw savedResult.error;
 
@@ -262,7 +239,9 @@ export default function MyPage() {
         if (allPostIds.length > 0) {
           const { data: scheduleRows, error: scheduleError } = await supabase
             .from("schedule_items")
-            .select("post_id,start_time,end_time,time,stay_duration,sort_order,created_at")
+            .select(
+              "post_id,start_time,end_time,time,stay_duration,sort_order,created_at",
+            )
             .in("post_id", allPostIds)
             .order("sort_order", { ascending: true })
             .order("created_at", { ascending: true });
@@ -281,33 +260,23 @@ export default function MyPage() {
           toPostCard(post, scheduleItemsByPostId.get(post.id) ?? []),
         );
 
-        console.log("ROUTY my page loaded", {
-          userId: currentUserId,
-          createdPostCount: createdPosts.length,
-          savedPostCount: savedPosts.length,
-        });
-
         if (isMounted) {
-          setUserId(currentUserId);
-          setProfile(profileResult.data as ProfileRow | null);
+          setProfile(currentProfile);
           setMyPosts(createdPosts);
           setSavedPostList(savedPosts);
           setFollowCounts(followCountsResult.data);
-          setFollowCountsError(
-            followCountsResult.error
-              ? getFollowCountsErrorMessage(followCountsResult.error)
-              : null,
-          );
+          setFollowCountsError(Boolean(followCountsResult.error));
         }
       } catch (error) {
         console.error("ROUTY my page load failed", error);
+
         if (isMounted) {
           setErrorMessage(getErrorMessage(error));
           setProfile(null);
           setMyPosts([]);
           setSavedPostList([]);
           setFollowCounts(null);
-          setFollowCountsError(null);
+          setFollowCountsError(false);
         }
       } finally {
         if (isMounted) {
@@ -316,7 +285,7 @@ export default function MyPage() {
       }
     }
 
-    loadMyPage();
+    void loadMyPage();
 
     return () => {
       isMounted = false;
@@ -324,147 +293,155 @@ export default function MyPage() {
   }, []);
 
   const displayName = getDisplayName(profile);
-  const userHandle = getUserHandle(userId);
   const activePosts = activeTab === "created" ? myPosts : savedPostList;
   const emptyMessage =
     activeTab === "created"
       ? "まだ投稿がありません"
       : "保存した投稿はまだありません";
-  const profileText = useMemo(() => {
-    if (myPosts.length === 0 && savedPostList.length === 0) {
-      return "ROUTYで旅のしおりを作成して、気になる投稿を保存できます。";
-    }
-
-    return "ROUTYで作成したしおりと保存した投稿をまとめています。";
-  }, [myPosts.length, savedPostList.length]);
 
   return (
     <AppShell>
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100 bg-white/95 px-4 py-3 backdrop-blur">
-        <h1 className="text-lg font-semibold tracking-normal">マイページ</h1>
-        <LogoutButton />
-      </header>
+      <div className="min-h-dvh bg-[#FFFEFB]">
+        <header className="flex h-16 items-center justify-between px-5">
+          <h1 className="text-lg font-bold tracking-tight text-zinc-950">マイページ</h1>
+          <LogoutButton />
+        </header>
 
-      <main className="overflow-x-hidden px-2 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-7">
-        <section className="px-5 text-center">
-          <div className="relative mx-auto h-24 w-24">
-            {profile?.avatar_url?.trim() ? (
-              <Image
-                src={profile.avatar_url.trim()}
-                alt={`${displayName}のプロフィール画像`}
-                fill
-                unoptimized
-                sizes="96px"
-                className="rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center rounded-full bg-zinc-950 text-3xl font-semibold text-white">
-                {getInitial(displayName)}
-              </div>
-            )}
-          </div>
-
-          <h2 className="mt-4 truncate text-2xl font-semibold leading-8 text-zinc-950">
-            {displayName}
-          </h2>
-          {userHandle ? (
-            <p className="mt-0.5 truncate text-sm font-medium text-zinc-500">
-              {userHandle}
+        {isLoading ? (
+          <MyPageSkeleton />
+        ) : errorMessage || !profile ? (
+          <main className="px-5 py-8">
+            <p className="rounded-2xl border border-red-100 bg-red-50 px-4 py-4 text-sm font-medium leading-6 text-red-700">
+              {errorMessage ?? "プロフィールを読み込めませんでした。"}
             </p>
-          ) : null}
-          <p className="mx-auto mt-3 line-clamp-3 max-w-[320px] text-sm leading-6 text-zinc-700">
-            {profileText}
-          </p>
+          </main>
+        ) : (
+          <main className="overflow-x-hidden">
+            <section className="px-5 pb-8 pt-3">
+              <div className="flex items-start gap-5">
+                <div className="relative flex h-[92px] w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#E8F7EB] text-3xl font-bold text-[#17852B] ring-4 ring-white shadow-[0_8px_24px_rgba(23,133,43,0.12)]">
+                  {profile.avatar_url?.trim() && !avatarFailed ? (
+                    <Image
+                      src={profile.avatar_url.trim()}
+                      alt={`${displayName}のプロフィール画像`}
+                      fill
+                      unoptimized
+                      sizes="92px"
+                      className="object-cover"
+                      onError={() => setAvatarFailed(true)}
+                    />
+                  ) : (
+                    <span aria-hidden="true">{getInitial(displayName)}</span>
+                  )}
+                </div>
 
-          {userId ? (
-            <div className="mt-4">
+                <div className="min-w-0 flex-1 pt-1">
+                  <h2 className="truncate text-xl font-bold leading-7 text-zinc-950">
+                    {displayName}
+                  </h2>
+                  {profile.username ? (
+                    <p className="mt-0.5 truncate text-sm font-semibold text-zinc-500">
+                      @{profile.username}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-4 flex items-center gap-5">
+                    <FollowCountLink
+                      href={`/users/${profile.id}/followers`}
+                      count={followCounts?.followerCount}
+                      label="フォロワー"
+                    />
+                    <FollowCountLink
+                      href={`/users/${profile.id}/following`}
+                      count={followCounts?.followingCount}
+                      label="フォロー中"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {followCountsError ? (
-                <p className="mx-auto max-w-[320px] rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium leading-5 text-red-700">
-                  {followCountsError}
+                <p className="mt-3 text-xs font-medium text-amber-700">
+                  フォロー情報を読み込めませんでした。
+                </p>
+              ) : null}
+
+              {profile.bio?.trim() ? (
+                <p className="mt-5 whitespace-pre-wrap text-sm font-medium leading-6 text-zinc-700">
+                  {profile.bio.trim()}
+                </p>
+              ) : null}
+
+              {profile.hobby_tags && profile.hobby_tags.length > 0 ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {profile.hobby_tags.slice(0, 5).map((tag) => (
+                    <span
+                      key={tag.toLowerCase()}
+                      className="rounded-full bg-[#EAF7EC] px-3 py-1.5 text-xs font-bold text-[#176C28]"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              <Link
+                href="/mypage/edit"
+                className="mt-6 flex h-11 w-full items-center justify-center rounded-full border border-zinc-200 bg-white text-sm font-bold text-zinc-800 shadow-[0_3px_12px_rgba(17,24,39,0.04)] transition hover:border-[#BDE8C5] hover:text-[#17852B]"
+              >
+                プロフィールを編集
+              </Link>
+            </section>
+
+            <section>
+              <div className="grid grid-cols-2 border-b border-zinc-100 px-5">
+                <ProfileTab
+                  label="作成コンテンツ"
+                  active={activeTab === "created"}
+                  onClick={() => setActiveTab("created")}
+                />
+                <ProfileTab
+                  label="保存済み"
+                  active={activeTab === "saved"}
+                  onClick={() => setActiveTab("saved")}
+                />
+              </div>
+
+              {activePosts.length === 0 ? (
+                <p className="px-5 py-20 text-center text-sm font-semibold text-zinc-500">
+                  {emptyMessage}
                 </p>
               ) : (
-                <div className="flex justify-center gap-10">
-                  <Link href={`/users/${userId}/following`} className="block">
-                    <p className="text-lg font-bold text-zinc-950">
-                      {followCounts
-                        ? followCounts.followingCount.toLocaleString("ja-JP")
-                        : "..."}
-                    </p>
-                    <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-                      フォロー中
-                    </p>
-                  </Link>
-                  <Link href={`/users/${userId}/followers`} className="block">
-                    <p className="text-lg font-bold text-zinc-950">
-                      {followCounts
-                        ? followCounts.followerCount.toLocaleString("ja-JP")
-                        : "..."}
-                    </p>
-                    <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-                      フォロワー
-                    </p>
-                  </Link>
+                <div className="grid grid-cols-2 gap-3 px-5 py-5">
+                  {activePosts.map((post) => (
+                    <PostCard key={post.id} post={post} variant="mypage" />
+                  ))}
                 </div>
               )}
-            </div>
-          ) : null}
-
-          <button
-            type="button"
-            disabled
-            className="mt-4 h-10 rounded-full bg-zinc-100 px-5 text-sm font-semibold text-zinc-500"
-          >
-            プロフィールを編集
-          </button>
-
-          {userId ? (
-            <Link
-              href={`/users/${userId}`}
-              className="mx-auto mt-3 block w-fit text-sm font-semibold text-[#057A55]"
-            >
-              公開プロフィールを見る
-            </Link>
-          ) : null}
-        </section>
-
-        <section className="mt-7">
-          <div className="flex justify-center gap-8 border-b border-zinc-100">
-            <ProfileTab
-              label="作成コンテンツ"
-              active={activeTab === "created"}
-              onClick={() => setActiveTab("created")}
-            />
-            <ProfileTab
-              label="保存済み"
-              active={activeTab === "saved"}
-              onClick={() => setActiveTab("saved")}
-            />
-          </div>
-
-          {isLoading ? (
-            <p className="py-16 text-center text-sm font-medium text-zinc-500">
-              読み込み中...
-            </p>
-          ) : errorMessage ? (
-            <div className="px-3 py-5">
-              <p className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700">
-                {errorMessage}
-              </p>
-            </div>
-          ) : activePosts.length === 0 ? (
-            <p className="py-16 text-center text-sm font-medium text-zinc-500">
-              {emptyMessage}
-            </p>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-28">
-              {activePosts.map((post) => (
-                <PostCard key={post.id} post={post} />
-              ))}
-            </div>
-          )}
-        </section>
-      </main>
+            </section>
+          </main>
+        )}
+      </div>
     </AppShell>
+  );
+}
+
+function FollowCountLink({
+  href,
+  count,
+  label,
+}: {
+  href: string;
+  count?: number;
+  label: string;
+}) {
+  return (
+    <Link href={href} className="min-w-0 text-left">
+      <span className="text-sm font-extrabold text-zinc-950">
+        {count === undefined ? "—" : count.toLocaleString("ja-JP")}
+      </span>
+      <span className="ml-1 text-[11px] font-semibold text-zinc-500">{label}</span>
+    </Link>
   );
 }
 
@@ -481,14 +458,43 @@ function ProfileTab({
     <button
       type="button"
       onClick={onClick}
-      className={`relative h-11 px-1 text-sm transition ${
-        active ? "font-semibold text-zinc-950" : "font-medium text-zinc-500"
+      className={`relative h-13 text-sm transition ${
+        active ? "font-bold text-zinc-950" : "font-semibold text-zinc-400"
       }`}
     >
       {label}
       {active ? (
-        <span className="absolute bottom-0 left-1/2 h-0.5 w-10 -translate-x-1/2 rounded-full bg-zinc-950" />
+        <span className="absolute bottom-0 left-1/2 h-0.5 w-14 -translate-x-1/2 rounded-full bg-[#28B83F]" />
       ) : null}
     </button>
+  );
+}
+
+function MyPageSkeleton() {
+  return (
+    <main className="animate-pulse px-5 pt-4">
+      <div className="flex gap-5">
+        <div className="h-[92px] w-[92px] shrink-0 rounded-full bg-zinc-100" />
+        <div className="flex-1 pt-2">
+          <div className="h-5 w-4/5 rounded-full bg-zinc-100" />
+          <div className="mt-3 h-3 w-2/5 rounded-full bg-zinc-100" />
+          <div className="mt-5 h-4 w-full rounded-full bg-zinc-100" />
+        </div>
+      </div>
+      <div className="mt-6 h-3 w-full rounded-full bg-zinc-100" />
+      <div className="mt-3 h-3 w-4/5 rounded-full bg-zinc-100" />
+      <div className="mt-6 h-11 rounded-full bg-zinc-100" />
+      <div className="mt-10 grid grid-cols-2 gap-3">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-100">
+            <div className="aspect-[4/3] bg-zinc-100" />
+            <div className="space-y-2 p-3">
+              <div className="h-3 w-full rounded-full bg-zinc-100" />
+              <div className="h-3 w-2/3 rounded-full bg-zinc-100" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </main>
   );
 }

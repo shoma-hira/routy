@@ -7,7 +7,15 @@ import { supabase } from "@/lib/supabase";
 
 const INVITE_ONLY_ERROR = "invite_only";
 const EMAIL_REQUIRED_ERROR = "email_required";
+const ACCOUNT_SETUP_PATH = "/account/setup";
 const publicPaths = ["/login"];
+
+type AuthProfile = {
+  id: string;
+  email: string | null;
+  username: string | null;
+  profile_completed: boolean;
+};
 
 function isPublicPath(pathname: string) {
   return publicPaths.some((path) => pathname === path);
@@ -40,12 +48,14 @@ function logAuthError(error: unknown) {
 }
 
 function getUserName(user: User) {
-  return (
+  const name = (
     user.user_metadata.full_name ??
     user.user_metadata.name ??
     user.email?.split("@")[0] ??
     "ROUTY User"
   );
+
+  return Array.from(String(name).trim()).slice(0, 30).join("") || "ROUTY User";
 }
 
 async function ensureAllowedUser(user: User) {
@@ -85,21 +95,66 @@ async function ensureProfile(user: User) {
     throw new Error("profiles作成に必要なメールアドレスがありません。");
   }
 
-  const { error } = await supabase
+  const { data: existingProfile, error: selectError } = await supabase
     .from("profiles")
-    .upsert(
-      {
-        id: user.id,
-        email: user.email,
-        display_name: getUserName(user),
-        avatar_url: user.user_metadata.avatar_url ?? null,
-      },
-      { onConflict: "id" },
-    );
+    .select("id,email,username,profile_completed")
+    .eq("id", user.id)
+    .maybeSingle();
 
-  if (error) {
-    throw error;
+  if (selectError) {
+    throw selectError;
   }
+
+  if (existingProfile) {
+    const profile = existingProfile as AuthProfile;
+
+    if (profile.email !== user.email) {
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ email: user.email })
+        .eq("id", user.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+    }
+
+    return profile;
+  }
+
+  const { data: insertedProfile, error: insertError } = await supabase
+    .from("profiles")
+    .insert({
+      id: user.id,
+      email: user.email,
+      display_name: getUserName(user),
+      avatar_url: user.user_metadata.avatar_url ?? null,
+      profile_completed: false,
+    })
+    .select("id,email,username,profile_completed")
+    .single();
+
+  if (!insertError) {
+    return insertedProfile as AuthProfile;
+  }
+
+  // getSession and onAuthStateChange can race on the first login. If the other
+  // request created the row first, read that row instead of overwriting it.
+  if (insertError.code === "23505") {
+    const { data: racedProfile, error: racedProfileError } = await supabase
+      .from("profiles")
+      .select("id,email,username,profile_completed")
+      .eq("id", user.id)
+      .single();
+
+    if (racedProfileError) {
+      throw racedProfileError;
+    }
+
+    return racedProfile as AuthProfile;
+  }
+
+  throw insertError;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -107,6 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isChecking, setIsChecking] = useState(true);
   const checkedUserIdRef = useRef<string | null>(null);
+  const authCheckIdRef = useRef(0);
 
   const handleInviteOnly = useCallback(async () => {
     checkedUserIdRef.current = null;
@@ -120,26 +176,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.replace(`/login?error=${EMAIL_REQUIRED_ERROR}`);
   }, [router]);
 
-  const routeForSession = useCallback(
-    (session: Session | null) => {
+  const getRouteTarget = useCallback(
+    (session: Session | null, profile?: AuthProfile) => {
       if (!session && !isPublicPath(pathname)) {
-        router.replace("/login");
-        return;
+        return "/login";
       }
 
-      if (session && pathname === "/login") {
-        router.replace("/home");
+      if (!session || !profile) {
+        return null;
       }
+
+      const hasCompletedProfile =
+        profile.profile_completed && Boolean(profile.username?.trim());
+
+      if (!hasCompletedProfile) {
+        return pathname === ACCOUNT_SETUP_PATH ? null : ACCOUNT_SETUP_PATH;
+      }
+
+      if (pathname === "/login" || pathname === ACCOUNT_SETUP_PATH) {
+        return "/home";
+      }
+
+      return null;
     },
-    [pathname, router],
+    [pathname],
   );
 
   const processSession = useCallback(
     async (session: Session | null) => {
+      const authCheckId = authCheckIdRef.current + 1;
+      authCheckIdRef.current = authCheckId;
+      setIsChecking(true);
+      let isRedirecting = false;
+
       try {
         if (!session) {
           checkedUserIdRef.current = null;
-          routeForSession(null);
+          const target = getRouteTarget(null);
+
+          if (target) {
+            isRedirecting = true;
+            router.replace(target);
+          }
+
           return;
         }
 
@@ -154,30 +233,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             isAllowed = await ensureAllowedUser(session.user);
           } catch (error) {
+            if (authCheckIdRef.current !== authCheckId) return;
             logAuthError(error);
             await handleEmailRequired();
             return;
           }
+
+          if (authCheckIdRef.current !== authCheckId) return;
 
           if (!isAllowed) {
             await handleInviteOnly();
             return;
           }
 
-          await ensureProfile(session.user);
           checkedUserIdRef.current = session.user.id;
         }
 
-        routeForSession(session);
+        const profile = await ensureProfile(session.user);
+
+        if (authCheckIdRef.current !== authCheckId) return;
+
+        const target = getRouteTarget(session, profile);
+
+        if (target) {
+          isRedirecting = true;
+          router.replace(target);
+        }
       } catch (error) {
+        if (authCheckIdRef.current !== authCheckId) return;
         logAuthError(error);
+        checkedUserIdRef.current = null;
         await supabase.auth.signOut();
         router.replace("/login");
       } finally {
-        setIsChecking(false);
+        if (authCheckIdRef.current === authCheckId && !isRedirecting) {
+          setIsChecking(false);
+        }
       }
     },
-    [handleEmailRequired, handleInviteOnly, routeForSession, router],
+    [getRouteTarget, handleEmailRequired, handleInviteOnly, router],
   );
 
   useEffect(() => {
@@ -201,16 +295,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [processSession]);
 
-  const isProtectedRouteChecking = isChecking && !isPublicPath(pathname);
+  const isRouteChecking = isChecking;
 
   return (
     <>
-      {isProtectedRouteChecking ? (
+      {isRouteChecking ? (
         <div className="flex min-h-screen items-center justify-center bg-white text-zinc-950">
           <p className="text-2xl font-semibold tracking-normal">ROUTY</p>
         </div>
       ) : null}
-      <div className={isProtectedRouteChecking ? "hidden" : undefined}>
+      <div className={isRouteChecking ? "hidden" : undefined}>
         {children}
       </div>
     </>

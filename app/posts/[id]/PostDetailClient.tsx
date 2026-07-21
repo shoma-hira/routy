@@ -48,7 +48,9 @@ type PostRow = {
 type ProfileRow = {
   id: string;
   display_name: string | null;
+  username: string | null;
   avatar_url: string | null;
+  profile_completed: boolean;
   role?: ProfileRole | null;
 };
 
@@ -396,7 +398,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
         const [profileResult, scheduleResult, savedResult] = await Promise.all([
           supabase
             .from("profiles")
-            .select("id,display_name,avatar_url")
+            .select("id,display_name,username,avatar_url,profile_completed")
             .eq("id", post.user_id)
             .maybeSingle(),
           supabase
@@ -777,6 +779,38 @@ function OverviewSlide({
   const titleLines = splitTitleByFullWidthSpace(post.title);
   const profileName = getProfileDisplayName(detail.profile);
   const profileHref = `/users/${post.user_id}`;
+  const profileUsername = detail.profile?.profile_completed
+    ? detail.profile.username?.trim() || null
+    : null;
+  const hasPublicProfile = Boolean(profileUsername);
+  const profileIdentity = (
+    <>
+      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-zinc-950">
+        {detail.profile?.avatar_url?.trim() ? (
+          <Image
+            src={detail.profile.avatar_url.trim()}
+            alt={`${profileName}のプロフィール画像`}
+            fill
+            unoptimized
+            sizes="44px"
+            className="object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-base font-bold text-white">
+            {getProfileInitial(profileName)}
+          </div>
+        )}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-bold text-[#111827]">{profileName}</p>
+        {profileUsername ? (
+          <p className="mt-0.5 truncate text-xs font-medium text-zinc-500">
+            @{profileUsername}
+          </p>
+        ) : null}
+      </div>
+    </>
+  );
 
   return (
     <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white pb-2">
@@ -830,31 +864,14 @@ function OverviewSlide({
         ) : null}
 
         <section className="mt-6 flex items-center justify-between gap-3 border-t border-zinc-100 pt-5">
-          <Link href={profileHref} className="flex min-w-0 items-center gap-3">
-            <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-zinc-950">
-              {detail.profile?.avatar_url?.trim() ? (
-                <Image
-                  src={detail.profile.avatar_url.trim()}
-                  alt={`${profileName}のプロフィール画像`}
-                  fill
-                  unoptimized
-                  sizes="44px"
-                  className="object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-base font-bold text-white">
-                  {getProfileInitial(profileName)}
-                </div>
-              )}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-[#111827]">{profileName}</p>
-              <p className="mt-0.5 truncate text-xs font-medium text-zinc-500">
-                @{post.user_id.slice(0, 8)}
-              </p>
-            </div>
-          </Link>
-          {currentUserId !== post.user_id ? (
+          {hasPublicProfile ? (
+            <Link href={profileHref} className="flex min-w-0 items-center gap-3">
+              {profileIdentity}
+            </Link>
+          ) : (
+            <div className="flex min-w-0 items-center gap-3">{profileIdentity}</div>
+          )}
+          {currentUserId !== post.user_id && hasPublicProfile ? (
             <FollowButton targetUserId={post.user_id} currentUserId={currentUserId} />
           ) : null}
         </section>

@@ -19,7 +19,9 @@ type FollowListType = "followers" | "following";
 type ProfileRow = {
   id: string;
   display_name: string | null;
+  username: string | null;
   avatar_url: string | null;
+  profile_completed: boolean;
 };
 
 function getErrorMessage(error: unknown) {
@@ -32,10 +34,6 @@ function getDisplayName(profile: ProfileRow) {
 
 function getInitial(displayName: string) {
   return displayName.trim().charAt(0).toUpperCase() || "R";
-}
-
-function getHandle(userId: string) {
-  return `@${userId.slice(0, 8)}`;
 }
 
 function BackIcon() {
@@ -89,7 +87,7 @@ function UserListItem({
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-zinc-950">{displayName}</p>
           <p className="mt-0.5 truncate text-xs font-medium text-zinc-500">
-            {getHandle(profile.id)}
+            @{profile.username}
           </p>
         </div>
       </Link>
@@ -130,7 +128,11 @@ export function FollowListClient({
       try {
         const loginUserId = await getCurrentUserId();
         const [ownerResult, userIds] = await Promise.all([
-          supabase.from("profiles").select("id").eq("id", userId).maybeSingle(),
+          supabase
+            .from("profiles")
+            .select("id,username,profile_completed")
+            .eq("id", userId)
+            .maybeSingle(),
           type === "followers"
             ? getFollowerUserIds(userId)
             : getFollowingUserIds(userId),
@@ -138,7 +140,11 @@ export function FollowListClient({
 
         if (ownerResult.error) throw ownerResult.error;
 
-        if (!ownerResult.data) {
+        if (
+          !ownerResult.data ||
+          !ownerResult.data.profile_completed ||
+          !ownerResult.data.username?.trim()
+        ) {
           if (isMounted) {
             setCurrentUserId(loginUserId);
             setProfiles([]);
@@ -160,18 +166,22 @@ export function FollowListClient({
         const [profilesResult, currentFollowingIds] = await Promise.all([
           supabase
             .from("profiles")
-            .select("id,display_name,avatar_url")
-            .in("id", userIds),
+            .select("id,display_name,username,avatar_url,profile_completed")
+            .in("id", userIds)
+            .eq("profile_completed", true)
+            .not("username", "is", null),
           getFollowingUserIds(loginUserId),
         ]);
 
         if (profilesResult.error) throw profilesResult.error;
 
         const profilesById = new Map(
-          ((profilesResult.data ?? []) as ProfileRow[]).map((profile) => [
-            profile.id,
-            profile,
-          ]),
+          ((profilesResult.data ?? []) as ProfileRow[])
+            .filter(
+              (profile) =>
+                profile.profile_completed && Boolean(profile.username?.trim()),
+            )
+            .map((profile) => [profile.id, profile]),
         );
         const orderedProfiles = userIds
           .map((id) => profilesById.get(id))

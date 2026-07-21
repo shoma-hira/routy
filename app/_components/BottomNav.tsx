@@ -4,40 +4,70 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
-  { href: "/home", label: "ホーム", icon: "H", id: "home" },
-  { href: "/bookmarks/new", label: "しおり作成", icon: "+", id: "create" },
-  { href: "/mypage", label: "マイページ", icon: "M", id: "mypage" },
+  { href: "/home", label: "ホーム", id: "home" },
+  { href: "/bookmarks/new", label: "作成", id: "create" },
+  { href: "/mypage", label: "マイページ", id: "mypage" },
 ];
+
+function NavIcon({ id }: { id: string }) {
+  if (id === "home") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-6 w-6">
+        <path
+          d="M3.75 10.5 12 3.75l8.25 6.75v8.25a1.5 1.5 0 0 1-1.5 1.5h-4.5v-6h-4.5v6h-4.5a1.5 1.5 0 0 1-1.5-1.5V10.5Z"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  if (id === "create") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-6 w-6">
+        <rect x="3.75" y="3.75" width="16.5" height="16.5" rx="5" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-6 w-6">
+      <circle cx="12" cy="8" r="3.25" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M5.5 20c.45-3.55 2.6-5.5 6.5-5.5s6.05 1.95 6.5 5.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-1/2 z-20 w-full max-w-[430px] -translate-x-1/2 border-t border-[#D8F0DD] bg-white/95 backdrop-blur">
-      <div className="grid h-16 w-full grid-cols-3 px-3 pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-30 w-[calc(100%-1.5rem)] max-w-[406px] -translate-x-1/2 rounded-[26px] border border-white/80 bg-[#FFFEFB]/95 p-1.5 shadow-[0_12px_34px_rgba(17,24,39,0.16)] backdrop-blur-xl">
+      <div className="grid h-16 w-full grid-cols-3">
         {navItems.map((item) => {
           const active =
             item.id === "home"
               ? pathname === "/home"
               : pathname === item.href || pathname.startsWith(`${item.href}/`);
-          const isActiveHome = active && item.id === "home";
 
           return (
             <Link
               key={item.id}
               href={item.href}
-              className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold ${
-                isActiveHome ? "text-[#28B83F]" : active ? "text-zinc-950" : "text-zinc-400"
+              aria-current={active ? "page" : undefined}
+              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-[20px] text-[11px] font-bold transition ${
+                active ? "bg-[#F0FAF2] text-[#28B83F]" : "text-zinc-400 hover:text-zinc-600"
               }`}
             >
-              <span
-                className={`flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-bold leading-none ${
-                  isActiveHome ? "bg-[#F1FAF3]" : ""
-                }`}
-              >
-                {item.icon}
-              </span>
-              <span>{item.label}</span>
+              <NavIcon id={item.id} />
+              <span className="truncate">{item.label}</span>
             </Link>
           );
         })}

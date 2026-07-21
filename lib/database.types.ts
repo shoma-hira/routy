@@ -95,21 +95,36 @@ export type Database = {
           id: string;
           email: string | null;
           display_name: string | null;
+          username: string | null;
+          bio: string | null;
           avatar_url: string | null;
+          hobby_tags: string[] | null;
+          profile_completed: boolean;
+          updated_at: string | null;
           role?: string | null;
         };
         Insert: {
           id: string;
           email?: string | null;
           display_name?: string | null;
+          username?: string | null;
+          bio?: string | null;
           avatar_url?: string | null;
+          hobby_tags?: string[] | null;
+          profile_completed?: boolean;
+          updated_at?: string | null;
           role?: string | null;
         };
         Update: {
           id?: string;
           email?: string | null;
           display_name?: string | null;
+          username?: string | null;
+          bio?: string | null;
           avatar_url?: string | null;
+          hobby_tags?: string[] | null;
+          profile_completed?: boolean;
+          updated_at?: string | null;
           role?: string | null;
         };
       };

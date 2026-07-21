@@ -13,7 +13,9 @@ export function AppShell({
     <div className="min-h-screen w-full overflow-x-hidden bg-zinc-50 text-zinc-950">
       <main
         className={`mx-auto min-h-screen w-full overflow-x-hidden bg-white ${
-          reserveBottomNavSpace ? "pb-24" : ""
+          reserveBottomNavSpace
+            ? "pb-[calc(7.75rem+env(safe-area-inset-bottom))]"
+            : ""
         } ${contentClassName}`}
       >
         {children}

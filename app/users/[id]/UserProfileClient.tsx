@@ -3,20 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "../../_components/AppShell";
 import { FollowButton } from "../../_components/FollowButton";
 import { PostCard, type PostCardPost } from "../../_components/PostCard";
 import { getCurrentUserId, getFollowCounts } from "@/lib/follows";
+import { getPublicProfileById, type PublicProfile } from "@/lib/profiles";
 import { formatRouteDuration, parseDurationMinutes } from "@/lib/routeTime";
 import { getReadableSupabaseError } from "@/lib/savedPosts";
 import { supabase } from "@/lib/supabase";
-
-type ProfileRow = {
-  id: string;
-  display_name: string | null;
-  avatar_url: string | null;
-};
 
 type PostRow = {
   id: string;
@@ -47,12 +42,8 @@ function getErrorMessage(error: unknown) {
   return getReadableSupabaseError(error, "プロフィールを読み込めませんでした。");
 }
 
-function getDisplayName(profile: ProfileRow | null) {
+function getDisplayName(profile: PublicProfile | null) {
   return profile?.display_name?.trim() || "ROUTY User";
-}
-
-function getUserHandle(userId: string) {
-  return `@${userId.slice(0, 8)}`;
 }
 
 function getInitial(displayName: string) {
@@ -182,7 +173,7 @@ function BackIcon() {
 export function UserProfileClient({ userId }: { userId: string }) {
   const router = useRouter();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [posts, setPosts] = useState<PostCardPost[]>([]);
   const [followCounts, setFollowCounts] = useState<FollowCounts>({
     followingCount: 0,
@@ -202,12 +193,8 @@ export function UserProfileClient({ userId }: { userId: string }) {
 
       try {
         const loginUserId = await getCurrentUserId();
-        const [profileResult, postsResult, counts] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("id,display_name,avatar_url")
-            .eq("id", userId)
-            .maybeSingle(),
+        const [publicProfile, postsResult, counts] = await Promise.all([
+          getPublicProfileById(userId),
           supabase
             .from("posts")
             .select(
@@ -219,10 +206,13 @@ export function UserProfileClient({ userId }: { userId: string }) {
           getFollowCounts(userId),
         ]);
 
-        if (profileResult.error) throw profileResult.error;
         if (postsResult.error) throw postsResult.error;
 
-        if (!profileResult.data) {
+        if (
+          !publicProfile ||
+          !publicProfile.profile_completed ||
+          !publicProfile.username?.trim()
+        ) {
           if (isMounted) {
             setCurrentUserId(loginUserId);
             setProfile(null);
@@ -252,14 +242,14 @@ export function UserProfileClient({ userId }: { userId: string }) {
           );
         }
 
-        const displayName = getDisplayName(profileResult.data as ProfileRow);
+        const displayName = getDisplayName(publicProfile);
         const nextPosts = postRows.map((post) =>
           toPostCard(post, scheduleItemsByPostId.get(post.id) ?? [], displayName),
         );
 
         if (isMounted) {
           setCurrentUserId(loginUserId);
-          setProfile(profileResult.data as ProfileRow);
+          setProfile(publicProfile);
           setPosts(nextPosts);
           setFollowCounts(counts);
         }
@@ -286,15 +276,7 @@ export function UserProfileClient({ userId }: { userId: string }) {
   }, [userId]);
 
   const displayName = getDisplayName(profile);
-  const userHandle = getUserHandle(userId);
   const isOwnProfile = currentUserId === userId;
-
-  const profileText = useMemo(() => {
-    if (notFound) return "ユーザーが見つかりません";
-    if (posts.length === 0) return "公開中のしおりはまだありません。";
-
-    return "公開中のしおりをまとめています。";
-  }, [notFound, posts.length]);
 
   function handleBack() {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -339,51 +321,73 @@ export function UserProfileClient({ userId }: { userId: string }) {
           </p>
         ) : (
           <>
-            <section className="px-5 text-center">
-              <div className="relative mx-auto h-24 w-24">
-                {profile?.avatar_url?.trim() ? (
-                  <Image
-                    src={profile.avatar_url.trim()}
-                    alt={`${displayName}のプロフィール画像`}
-                    fill
-                    unoptimized
-                    sizes="96px"
-                    className="rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center rounded-full bg-zinc-950 text-3xl font-semibold text-white">
-                    {getInitial(displayName)}
+            <section className="px-5 pb-2">
+              <div className="flex items-start gap-5">
+                <div className="relative flex h-[92px] w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#E8F7EB] text-3xl font-bold text-[#17852B] ring-4 ring-white shadow-[0_8px_24px_rgba(23,133,43,0.12)]">
+                  {profile?.avatar_url?.trim() ? (
+                    <Image
+                      src={profile.avatar_url.trim()}
+                      alt={`${displayName}のプロフィール画像`}
+                      fill
+                      unoptimized
+                      sizes="92px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <span aria-hidden="true">{getInitial(displayName)}</span>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1 pt-1">
+                  <h2 className="truncate text-xl font-bold leading-7 text-zinc-950">
+                    {displayName}
+                  </h2>
+                  <p className="mt-0.5 truncate text-sm font-semibold text-zinc-500">
+                    @{profile?.username}
+                  </p>
+
+                  <div className="mt-4 flex items-center gap-5">
+                    <Link href={`/users/${userId}/followers`} className="min-w-0">
+                      <span className="text-sm font-extrabold text-zinc-950">
+                        {followCounts.followerCount.toLocaleString("ja-JP")}
+                      </span>
+                      <span className="ml-1 text-[11px] font-semibold text-zinc-500">
+                        フォロワー
+                      </span>
+                    </Link>
+                    <Link href={`/users/${userId}/following`} className="min-w-0">
+                      <span className="text-sm font-extrabold text-zinc-950">
+                        {followCounts.followingCount.toLocaleString("ja-JP")}
+                      </span>
+                      <span className="ml-1 text-[11px] font-semibold text-zinc-500">
+                        フォロー中
+                      </span>
+                    </Link>
                   </div>
-                )}
+                </div>
               </div>
 
-              <h2 className="mt-4 truncate text-2xl font-semibold leading-8 text-zinc-950">
-                {displayName}
-              </h2>
-              <p className="mt-0.5 truncate text-sm font-medium text-zinc-500">
-                {userHandle}
-              </p>
-              <p className="mx-auto mt-3 line-clamp-3 max-w-[320px] text-sm leading-6 text-zinc-700">
-                {profileText}
-              </p>
+              {profile?.bio?.trim() ? (
+                <p className="mt-5 whitespace-pre-wrap text-sm font-medium leading-6 text-zinc-700">
+                  {profile.bio.trim()}
+                </p>
+              ) : null}
 
-              <div className="mt-5 flex justify-center gap-10">
-                <Link href={`/users/${userId}/following`} className="block">
-                  <p className="text-lg font-bold text-zinc-950">
-                    {followCounts.followingCount.toLocaleString("ja-JP")}
-                  </p>
-                  <p className="mt-0.5 text-xs font-semibold text-zinc-500">フォロー中</p>
-                </Link>
-                <Link href={`/users/${userId}/followers`} className="block">
-                  <p className="text-lg font-bold text-zinc-950">
-                    {followCounts.followerCount.toLocaleString("ja-JP")}
-                  </p>
-                  <p className="mt-0.5 text-xs font-semibold text-zinc-500">フォロワー</p>
-                </Link>
-              </div>
+              {profile?.hobby_tags && profile.hobby_tags.length > 0 ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {profile.hobby_tags.slice(0, 5).map((tag) => (
+                    <span
+                      key={tag.toLowerCase()}
+                      className="rounded-full bg-[#EAF7EC] px-3 py-1.5 text-xs font-bold text-[#176C28]"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
 
               {!isOwnProfile ? (
-                <div className="mt-5 flex justify-center">
+                <div className="mt-6">
                   <FollowButton targetUserId={userId} currentUserId={currentUserId} />
                 </div>
               ) : null}
@@ -401,7 +405,7 @@ export function UserProfileClient({ userId }: { userId: string }) {
               ) : (
                 <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-28">
                   {posts.map((post) => (
-                    <PostCard key={post.id} post={post} />
+                    <PostCard key={post.id} post={post} variant="mypage" />
                   ))}
                 </div>
               )}

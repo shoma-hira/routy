@@ -18,7 +18,7 @@ export type PostCardPost = {
   isSaving?: boolean;
 };
 
-type PostCardVariant = "default" | "home";
+type PostCardVariant = "default" | "home" | "mypage";
 
 function InfoPill({
   children,
@@ -28,7 +28,7 @@ function InfoPill({
   variant?: PostCardVariant;
 }) {
   const className =
-    variant === "home"
+    variant === "home" || variant === "mypage"
       ? "min-w-0 truncate rounded-full border border-[#D8F0DD] bg-[#F1FAF3] px-2 py-1 text-[10px] font-semibold leading-none text-[#057A55]"
       : "min-w-0 truncate rounded-md bg-zinc-100 px-1.5 py-1 text-[10px] font-semibold leading-none text-zinc-700";
 
@@ -56,6 +56,52 @@ export function PostCard({
     ...secondaryLabels,
   ].filter(Boolean) as string[];
   const isHome = variant === "home";
+  const isMyPage = variant === "mypage";
+
+  if (isMyPage) {
+    return (
+      <article className="min-w-0 overflow-hidden rounded-2xl bg-white shadow-[0_7px_22px_rgba(17,24,39,0.07)] ring-1 ring-zinc-100">
+        <Link href={detailHref} className="block h-full">
+          <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#F1FAF3]">
+            {post.coverImage ? (
+              <Image
+                src={post.coverImage}
+                alt={`${post.title}のサムネイル画像`}
+                fill
+                loading="lazy"
+                decoding="async"
+                quality={60}
+                sizes="calc((min(100vw, 430px) - 52px) / 2)"
+                className="pointer-events-none object-cover transition duration-300 hover:scale-[1.02]"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center px-3 text-center text-[11px] font-semibold leading-5 text-zinc-400">
+                画像未設定
+              </div>
+            )}
+          </div>
+
+          <div className="p-3">
+            <h2 className="line-clamp-2 min-h-[38px] text-[13px] font-bold leading-[1.45] text-zinc-950">
+              {post.title}
+            </h2>
+            {areaLabel ? (
+              <p className="mt-1.5 truncate text-[11px] font-semibold leading-4 text-[#057A55]">
+                {areaLabel}
+              </p>
+            ) : null}
+            <div className="mt-2 grid grid-cols-2 gap-1.5">
+              {infoLabels.map((label) => (
+                <InfoPill key={label} variant="mypage">
+                  {label}
+                </InfoPill>
+              ))}
+            </div>
+          </div>
+        </Link>
+      </article>
+    );
+  }
 
   return (
     <article
