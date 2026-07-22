@@ -86,12 +86,6 @@ export async function toggleSavedPost({
     return false;
   }
 
-  const alreadySaved = await isPostSaved(userId, postId);
-
-  if (alreadySaved) {
-    return true;
-  }
-
   const { error } = await supabase.from("saved_posts").insert({
     user_id: userId,
     post_id: postId,

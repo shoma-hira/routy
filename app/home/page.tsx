@@ -4,7 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "../_components/AppShell";
-import { getCurrentUserId, getReadableSupabaseError } from "@/lib/savedPosts";
+import { HomeSkeleton } from "../_components/HomeSkeleton";
+import { getReadableSupabaseError } from "@/lib/savedPosts";
 import { parseDurationMinutes } from "@/lib/routeTime";
 import { supabase } from "@/lib/supabase";
 
@@ -35,7 +36,7 @@ type HomePost = {
   title: string;
   area: string | null;
   transportLabel: string;
-  durationLabel: string;
+  durationLabel: string | null;
   budgetLabel: string;
   companionLabel: string;
   coverImage: string | null;
@@ -133,13 +134,13 @@ function getBudgetLabel(value?: number | null) {
   return `${value.toLocaleString("ja-JP")}円`;
 }
 
-function toHomePost(post: PostRow, scheduleItems: ScheduleItemRow[]): HomePost {
+function toHomePost(post: PostRow, scheduleItems?: ScheduleItemRow[]): HomePost {
   return {
     id: post.id,
     title: post.title,
     area: post.area?.trim() || null,
     transportLabel: getTransportLabel(post.transport_type),
-    durationLabel: getDurationLabel(scheduleItems),
+    durationLabel: scheduleItems ? getDurationLabel(scheduleItems) : null,
     budgetLabel: getBudgetLabel(post.budget),
     companionLabel: getCompanionLabel(post.companion_type),
     coverImage: post.cover_image_url?.trim() || null,
@@ -178,9 +179,11 @@ function SearchIcon() {
 function PostCard({
   post,
   imagePriority = false,
+  isMetadataLoading = false,
 }: {
   post: HomePost;
   imagePriority?: boolean;
+  isMetadataLoading?: boolean;
 }) {
   const areaLabel = post.area ? `${post.area}エリア` : "エリア未設定";
   const titleLines = splitTitleByFullWidthSpace(post.title);
@@ -235,14 +238,26 @@ function PostCard({
           </p>
 
           <div className="mt-2 grid grid-cols-2 gap-1.5">
-            {infoLabels.map((label) => (
-              <span
-                key={label}
-                className="min-w-0 truncate rounded-full border border-[#D8F0DD] bg-[#F1FAF3] px-2 py-1 text-center text-[10px] font-semibold leading-none text-[#057A55]"
-              >
-                {label}
-              </span>
-            ))}
+            {infoLabels.map((label, index) =>
+              label ? (
+                <span
+                  key={`${index}-${label}`}
+                  className="min-w-0 truncate rounded-full border border-[#D8F0DD] bg-[#F1FAF3] px-2 py-1 text-center text-[10px] font-semibold leading-none text-[#057A55]"
+                >
+                  {label}
+                </span>
+              ) : (
+                <span
+                  key={`${index}-pending`}
+                  className={`h-[18px] min-w-0 rounded-full border border-[#D8F0DD] bg-[#F1FAF3] ${
+                    isMetadataLoading ? "animate-pulse motion-reduce:animate-none" : ""
+                  }`}
+                  aria-label={
+                    isMetadataLoading ? "所要時間を読み込み中" : "所要時間を取得できませんでした"
+                  }
+                />
+              ),
+            )}
           </div>
         </div>
       </Link>
@@ -252,35 +267,44 @@ function PostCard({
 
 export default function HomePage() {
   const [posts, setPosts] = useState<HomePost[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isPostsLoading, setIsPostsLoading] = useState(true);
+  const [isMetadataLoading, setIsMetadataLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadPosts() {
-      setIsLoading(true);
+      setIsPostsLoading(true);
+      setIsMetadataLoading(false);
       setErrorMessage(null);
 
       try {
-        const [, postsResult] = await Promise.all([
-          getCurrentUserId(),
-          supabase
-            .from("posts")
-            .select(
-              "id,title,area,transport_type,companion_type,budget,cover_image_url",
-            )
-            .eq("is_published", true)
-            .order("created_at", { ascending: false }),
-        ]);
+        const postsResult = await supabase
+          .from("posts")
+          .select(
+            "id,title,area,transport_type,companion_type,budget,cover_image_url",
+          )
+          .eq("is_published", true)
+          .order("created_at", { ascending: false });
 
         if (postsResult.error) throw postsResult.error;
 
         const publishedPosts = (postsResult.data ?? []) as PostRow[];
+        const initialPosts = publishedPosts.map((post) => toHomePost(post));
+
+        if (isMounted) {
+          setPosts(initialPosts);
+          setIsPostsLoading(false);
+        }
+
         const postIds = publishedPosts.map((post) => post.id);
-        let scheduleItemsByPostId = new Map<string, ScheduleItemRow[]>();
 
         if (postIds.length > 0) {
+          if (isMounted) {
+            setIsMetadataLoading(true);
+          }
+
           const { data: scheduleRows, error: scheduleError } = await supabase
             .from("schedule_items")
             .select("post_id,start_time,end_time,time,stay_duration,sort_order,created_at")
@@ -288,30 +312,32 @@ export default function HomePage() {
             .order("sort_order", { ascending: true })
             .order("created_at", { ascending: true });
 
-          if (scheduleError) throw scheduleError;
+          if (scheduleError) {
+            console.error("ROUTY home schedule metadata load failed", scheduleError);
+            return;
+          }
 
-          scheduleItemsByPostId = ((scheduleRows ?? []) as ScheduleItemRow[]).reduce(
-            (map, item) => {
-              const items = map.get(item.post_id) ?? [];
-              items.push(item);
-              map.set(item.post_id, items);
-              return map;
-            },
-            new Map<string, ScheduleItemRow[]>(),
+          const scheduleItemsByPostId = (
+            (scheduleRows ?? []) as ScheduleItemRow[]
+          ).reduce((map, item) => {
+            const items = map.get(item.post_id) ?? [];
+            items.push(item);
+            map.set(item.post_id, items);
+            return map;
+          }, new Map<string, ScheduleItemRow[]>());
+
+          const postsWithMetadata = publishedPosts.map((post) =>
+            toHomePost(post, scheduleItemsByPostId.get(post.id) ?? []),
           );
-        }
 
-        const nextPosts = publishedPosts.map((post) =>
-          toHomePost(post, scheduleItemsByPostId.get(post.id) ?? []),
-        );
+          if (isMounted) {
+            setPosts(postsWithMetadata);
+          }
+        }
 
         console.log("ROUTY home posts loaded", {
-          postCount: nextPosts.length,
+          postCount: publishedPosts.length,
         });
-
-        if (isMounted) {
-          setPosts(nextPosts);
-        }
       } catch (error) {
         console.error("ROUTY home posts load failed", error);
         if (isMounted) {
@@ -320,12 +346,8 @@ export default function HomePage() {
         }
       } finally {
         if (isMounted) {
-          setIsLoading(false);
-          try {
-            window.dispatchEvent(new Event("routy:app-ready"));
-          } catch (error) {
-            console.error("ROUTY home ready event failed", error);
-          }
+          setIsPostsLoading(false);
+          setIsMetadataLoading(false);
         }
       }
     }
@@ -363,10 +385,8 @@ export default function HomePage() {
         </div>
       </header>
 
-      {isLoading ? (
-        <div className="px-4 py-10 text-center text-sm font-medium text-[#6B7280]">
-          読み込み中...
-        </div>
+      {isPostsLoading ? (
+        <HomeSkeleton />
       ) : errorMessage ? (
         <div className="px-4 py-4">
           <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700">
@@ -380,7 +400,12 @@ export default function HomePage() {
       ) : (
         <div className="grid grid-cols-2 gap-3 px-4 py-4 pb-[calc(9rem+env(safe-area-inset-bottom))]">
           {posts.map((post, index) => (
-            <PostCard key={post.id} post={post} imagePriority={index === 0} />
+            <PostCard
+              key={post.id}
+              post={post}
+              imagePriority={index === 0}
+              isMetadataLoading={isMetadataLoading}
+            />
           ))}
         </div>
       )}

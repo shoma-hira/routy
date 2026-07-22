@@ -163,6 +163,10 @@ export function FollowListClient({
           return;
         }
 
+        const currentFollowingIdsPromise =
+          type === "following" && loginUserId === userId
+            ? Promise.resolve(userIds)
+            : getFollowingUserIds(loginUserId);
         const [profilesResult, currentFollowingIds] = await Promise.all([
           supabase
             .from("profiles")
@@ -170,7 +174,7 @@ export function FollowListClient({
             .in("id", userIds)
             .eq("profile_completed", true)
             .not("username", "is", null),
-          getFollowingUserIds(loginUserId),
+          currentFollowingIdsPromise,
         ]);
 
         if (profilesResult.error) throw profilesResult.error;

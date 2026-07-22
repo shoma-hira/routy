@@ -86,7 +86,6 @@ export function ProfileEditClient() {
         hobbyTags: values.hobbyTags,
       });
       router.replace("/mypage");
-      router.refresh();
     } catch (error) {
       setIsSaving(false);
       throw error;

@@ -53,8 +53,8 @@ export async function isFollowingForUser(currentUserId: string, targetUserId: st
   return Boolean(data);
 }
 
-export async function followUser(targetUserId: string) {
-  const currentUserId = await getCurrentUserId();
+export async function followUser(targetUserId: string, knownCurrentUserId?: string) {
+  const currentUserId = knownCurrentUserId ?? (await getCurrentUserId());
   assertNotSelfFollow(currentUserId, targetUserId);
 
   const { error } = await supabase.from("follows").insert({
@@ -73,8 +73,8 @@ export async function followUser(targetUserId: string) {
   return true;
 }
 
-export async function unfollowUser(targetUserId: string) {
-  const currentUserId = await getCurrentUserId();
+export async function unfollowUser(targetUserId: string, knownCurrentUserId?: string) {
+  const currentUserId = knownCurrentUserId ?? (await getCurrentUserId());
 
   if (currentUserId === targetUserId) {
     return false;
@@ -94,28 +94,41 @@ export async function unfollowUser(targetUserId: string) {
 }
 
 export async function getFollowCounts(userId: string): Promise<FollowCounts> {
-  const [followingResult, followerResult] = await Promise.all([
-    supabase
-      .from("follows")
-      .select("following_id", { count: "exact", head: true })
-      .eq("follower_id", userId),
-    supabase
-      .from("follows")
-      .select("follower_id", { count: "exact", head: true })
-      .eq("following_id", userId),
+  const [followingUserIds, followerUserIds] = await Promise.all([
+    getFollowingUserIds(userId),
+    getFollowerUserIds(userId),
   ]);
+  const relatedUserIds = Array.from(
+    new Set([...followingUserIds, ...followerUserIds]),
+  );
 
-  if (followingResult.error) {
-    throw followingResult.error;
+  if (relatedUserIds.length === 0) {
+    return {
+      followingCount: 0,
+      followerCount: 0,
+    };
   }
 
-  if (followerResult.error) {
-    throw followerResult.error;
+  const { data: publicProfiles, error } = await supabase
+    .from("profiles")
+    .select("id,username")
+    .in("id", relatedUserIds)
+    .eq("profile_completed", true)
+    .not("username", "is", null);
+
+  if (error) {
+    throw error;
   }
+
+  const publicUserIds = new Set(
+    (publicProfiles ?? [])
+      .filter((profile) => Boolean(profile.username?.trim()))
+      .map((profile) => profile.id),
+  );
 
   return {
-    followingCount: followingResult.count ?? 0,
-    followerCount: followerResult.count ?? 0,
+    followingCount: new Set(followingUserIds.filter((id) => publicUserIds.has(id))).size,
+    followerCount: new Set(followerUserIds.filter((id) => publicUserIds.has(id))).size,
   };
 }
 

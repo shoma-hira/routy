@@ -49,29 +49,33 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-30 w-[calc(100%-1.5rem)] max-w-[406px] -translate-x-1/2 rounded-[26px] border border-white/80 bg-[#FFFEFB]/95 p-1.5 shadow-[0_12px_34px_rgba(17,24,39,0.16)] backdrop-blur-xl">
-      <div className="grid h-16 w-full grid-cols-3">
-        {navItems.map((item) => {
-          const active =
-            item.id === "home"
-              ? pathname === "/home"
-              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+    <nav
+      aria-label="メインナビゲーション"
+      className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-30 flex -translate-x-1/2 items-center justify-center gap-3.5"
+    >
+      {navItems.map((item) => {
+        const active =
+          item.id === "home"
+            ? pathname === "/home"
+            : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-          return (
-            <Link
-              key={item.id}
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-[20px] text-[11px] font-bold transition ${
-                active ? "bg-[#F0FAF2] text-[#28B83F]" : "text-zinc-400 hover:text-zinc-600"
-              }`}
-            >
-              <NavIcon id={item.id} />
-              <span className="truncate">{item.label}</span>
-            </Link>
-          );
-        })}
-      </div>
+        return (
+          <Link
+            key={item.id}
+            href={item.href}
+            aria-label={item.label}
+            aria-current={active ? "page" : undefined}
+            className={`pointer-events-auto flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full border shadow-[0_8px_24px_rgba(17,24,39,0.14)] transition active:scale-95 ${
+              active
+                ? "border-[#28B83F] bg-[#28B83F] text-white"
+                : "border-white/90 bg-[#FFFEFB]/95 text-zinc-400 backdrop-blur-xl hover:text-zinc-600"
+            }`}
+          >
+            <NavIcon id={item.id} />
+            <span className="sr-only">{item.label}</span>
+          </Link>
+        );
+      })}
     </nav>
   );
 }

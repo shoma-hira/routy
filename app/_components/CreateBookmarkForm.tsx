@@ -13,6 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { normalizeArea } from "@/lib/area";
+import { compressImageForUpload } from "@/lib/compressImage";
 import { supabase } from "@/lib/supabase";
 
 export type ScheduleContent = {
@@ -1133,6 +1134,14 @@ export function CreateBookmarkForm({
       throw new Error("画像ファイルを選択してください。");
     }
 
+    let uploadFile = selectedThumbnailFile;
+
+    try {
+      uploadFile = await compressImageForUpload(selectedThumbnailFile);
+    } catch (error) {
+      console.warn("ROUTY image compression failed; uploading original image", error);
+    }
+
     const fileId =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
@@ -1142,8 +1151,9 @@ export function CreateBookmarkForm({
     )}`;
     const { error: uploadError } = await supabase.storage
       .from(postImageBucket)
-      .upload(path, selectedThumbnailFile, {
+      .upload(path, uploadFile, {
         cacheControl: "3600",
+        contentType: uploadFile.type || undefined,
         upsert: false,
       });
 

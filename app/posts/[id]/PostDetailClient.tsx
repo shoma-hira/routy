@@ -2,12 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { toPng } from "html-to-image";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "../../_components/AppShell";
 import { FollowButton } from "../../_components/FollowButton";
-import { SharePngTemplate } from "../../_components/SharePngTemplate";
+import { PostDetailSkeleton } from "../../_components/PostDetailSkeleton";
 import { formatAreaLabel } from "@/lib/area";
 import {
   parseRoutyDisplayTags,
@@ -28,6 +28,14 @@ import {
 } from "@/lib/routeTime";
 
 const slideCount = 2;
+
+const SharePngTemplate = dynamic(
+  () =>
+    import("../../_components/SharePngTemplate").then(
+      (module) => module.SharePngTemplate,
+    ),
+  { ssr: false },
+);
 
 type ProfileRole = "user" | "admin";
 
@@ -322,11 +330,15 @@ export function PostDetailClient({ postId }: { postId: string }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const shareImageRef = useRef<HTMLDivElement>(null);
   const [detail, setDetail] = useState<DetailState | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isPostLoading, setIsPostLoading] = useState(true);
+  const [isAuthorLoading, setIsAuthorLoading] = useState(false);
+  const [isScheduleLoading, setIsScheduleLoading] = useState(false);
+  const [isSavedLoading, setIsSavedLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
+  const [isSavedReady, setIsSavedReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingShareImage, setIsGeneratingShareImage] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -342,38 +354,25 @@ export function PostDetailClient({ postId }: { postId: string }) {
     let isMounted = true;
 
     async function loadDetail() {
-      setIsLoading(true);
+      setIsPostLoading(true);
+      setIsAuthorLoading(false);
+      setIsScheduleLoading(false);
+      setIsSavedLoading(false);
+      setIsSavedReady(false);
       setErrorMessage(null);
       setNotFound(false);
 
       try {
-        const currentUserId = await getCurrentUserId();
-        let currentRole: ProfileRole = "user";
-        const [currentProfileResult, postResult] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("id,role")
-            .eq("id", currentUserId)
-            .maybeSingle(),
-          supabase
-            .from("posts")
-            .select(
-              "id,user_id,title,area,transport_type,companion_type,budget,caption,cover_image_url,is_published,created_at",
-            )
-            .eq("id", postId)
-            .maybeSingle(),
-        ]);
-
-        if (
-          currentProfileResult.error &&
-          !isMissingRoleColumn(currentProfileResult.error)
-        ) {
-          throw currentProfileResult.error;
-        }
-
-        if (!currentProfileResult.error) {
-          currentRole = normalizeProfileRole(currentProfileResult.data?.role);
-        }
+        const currentUserResultPromise = getCurrentUserId()
+          .then((currentUserId) => ({ currentUserId, error: null }))
+          .catch((error: unknown) => ({ currentUserId: null, error }));
+        const postResult = await supabase
+          .from("posts")
+          .select(
+            "id,user_id,title,area,transport_type,companion_type,budget,caption,cover_image_url,is_published,created_at",
+          )
+          .eq("id", postId)
+          .maybeSingle();
 
         if (postResult.error) throw postResult.error;
 
@@ -386,54 +385,144 @@ export function PostDetailClient({ postId }: { postId: string }) {
         }
 
         const post = postResult.data as PostRow;
+        const initialDetail: DetailState = {
+          post,
+          profile: null,
+          scheduleItems: [],
+        };
 
-        if (!post.is_published && post.user_id !== currentUserId && currentRole !== "admin") {
-          if (isMounted) {
-            setDetail(null);
-            setNotFound(true);
+        if (post.is_published && isMounted) {
+          setDetail(initialDetail);
+          setIsPostLoading(false);
+        }
+
+        const loadAuthor = async () => {
+          if (isMounted) setIsAuthorLoading(true);
+
+          try {
+            const profileResult = await supabase
+              .from("profiles")
+              .select("id,display_name,username,avatar_url,profile_completed")
+              .eq("id", post.user_id)
+              .maybeSingle();
+
+            if (profileResult.error) throw profileResult.error;
+            if (isMounted) {
+              setDetail((current) =>
+                current
+                  ? { ...current, profile: profileResult.data as ProfileRow | null }
+                  : current,
+              );
+            }
+          } catch (error) {
+            console.error("ROUTY post author load failed", error);
+          } finally {
+            if (isMounted) setIsAuthorLoading(false);
           }
+        };
+
+        const loadSchedule = async () => {
+          if (isMounted) setIsScheduleLoading(true);
+
+          try {
+            const scheduleResult = await supabase
+              .from("schedule_items")
+              .select(
+                "id,post_id,start_time,end_time,content_name,place_name,comment,image_url,sort_order,time,stay_duration,spot_name,created_at",
+              )
+              .eq("post_id", post.id)
+              .order("sort_order", { ascending: true })
+              .order("created_at", { ascending: true });
+
+            if (scheduleResult.error) throw scheduleResult.error;
+            const scheduleItems = sortScheduleItems(
+              (scheduleResult.data ?? []) as ScheduleItemRow[],
+            );
+
+            if (isMounted) {
+              setDetail((current) =>
+                current ? { ...current, scheduleItems } : current,
+              );
+            }
+          } catch (error) {
+            console.error("ROUTY post schedule load failed", error);
+          } finally {
+            if (isMounted) setIsScheduleLoading(false);
+          }
+        };
+
+        const auxiliaryTasks = post.is_published
+          ? [loadAuthor(), loadSchedule()]
+          : [];
+        const currentUserResult = await currentUserResultPromise;
+
+        if (!currentUserResult.currentUserId) {
+          if (!post.is_published) throw currentUserResult.error;
+          console.error("ROUTY post current user load failed", currentUserResult.error);
+          await Promise.allSettled(auxiliaryTasks);
           return;
         }
 
-        const [profileResult, scheduleResult, savedResult] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("id,display_name,username,avatar_url,profile_completed")
-            .eq("id", post.user_id)
-            .maybeSingle(),
-          supabase
-            .from("schedule_items")
-            .select(
-              "id,post_id,start_time,end_time,content_name,place_name,comment,image_url,sort_order,time,stay_duration,spot_name,created_at",
-            )
-            .eq("post_id", post.id)
-            .order("sort_order", { ascending: true })
-            .order("created_at", { ascending: true }),
-          isPostSaved(currentUserId, post.id)
-        ]);
+        const currentUserId = currentUserResult.currentUserId;
 
-        if (profileResult.error) throw profileResult.error;
-        if (scheduleResult.error) throw scheduleResult.error;
+        if (!isMounted) return;
 
-        const nextDetail = {
-          post,
-          profile: profileResult.data as ProfileRow | null,
-          scheduleItems: sortScheduleItems(
-            (scheduleResult.data ?? []) as ScheduleItemRow[],
-          ),
-        };
+        setUserId(currentUserId);
 
-        console.log("ROUTY post detail loaded", {
-          postId: post.id,
-          scheduleItemCount: nextDetail.scheduleItems.length,
-        });
+        const currentRolePromise = supabase
+          .from("profiles")
+          .select("id,role")
+          .eq("id", currentUserId)
+          .maybeSingle();
+        setIsSavedLoading(true);
+        const savedPromise = isPostSaved(currentUserId, post.id)
+          .then((saved) => {
+            if (isMounted) {
+              setIsSaved(saved);
+              setIsSavedReady(true);
+            }
+          })
+          .catch((error) => {
+            console.error("ROUTY post saved state load failed", error);
+            if (isMounted) {
+              setSaveErrorMessage("保存状態を取得できませんでした。");
+            }
+          })
+          .finally(() => {
+            if (isMounted) setIsSavedLoading(false);
+          });
 
-        if (isMounted) {
-          setUserId(currentUserId);
-          setCurrentUserRole(currentRole);
-          setIsSaved(savedResult);
-          setDetail(nextDetail);
+        const currentProfileResult = await currentRolePromise;
+        let currentRole: ProfileRole = "user";
+
+        if (
+          currentProfileResult.error &&
+          !isMissingRoleColumn(currentProfileResult.error)
+        ) {
+          console.error("ROUTY current user role load failed", currentProfileResult.error);
+        } else if (!currentProfileResult.error) {
+          currentRole = normalizeProfileRole(currentProfileResult.data?.role);
         }
+
+        if (!isMounted) return;
+        setCurrentUserRole(currentRole);
+
+        if (!post.is_published && post.user_id !== currentUserId && currentRole !== "admin") {
+          setDetail(null);
+          setNotFound(true);
+          return;
+        }
+
+        if (!post.is_published) {
+          setDetail(initialDetail);
+          setIsPostLoading(false);
+          auxiliaryTasks.push(loadAuthor(), loadSchedule());
+        }
+
+        await Promise.allSettled([
+          ...auxiliaryTasks,
+          savedPromise,
+        ]);
       } catch (error) {
         console.error("ROUTY post detail load failed", error);
         if (isMounted) {
@@ -442,7 +531,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
         }
       } finally {
         if (isMounted) {
-          setIsLoading(false);
+          setIsPostLoading(false);
         }
       }
     }
@@ -550,16 +639,24 @@ export function PostDetailClient({ postId }: { postId: string }) {
       return;
     }
 
-    if (!shareImageRef.current) {
-      setSaveErrorMessage("シェア画像の生成準備ができていません。");
-      return;
-    }
-
     setIsGeneratingShareImage(true);
     setSaveErrorMessage(null);
 
     try {
-      const dataUrl = await toPng(shareImageRef.current, {
+      const htmlToImagePromise = import("html-to-image");
+      let shareImageElement = shareImageRef.current;
+
+      for (let frame = 0; !shareImageElement && frame < 120; frame += 1) {
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        shareImageElement = shareImageRef.current;
+      }
+
+      if (!shareImageElement) {
+        throw new Error("シェア画像の生成準備ができていません。");
+      }
+
+      const { toPng } = await htmlToImagePromise;
+      const dataUrl = await toPng(shareImageElement, {
         backgroundColor: "transparent",
         pixelRatio: 3,
         cacheBust: true,
@@ -605,7 +702,9 @@ export function PostDetailClient({ postId }: { postId: string }) {
           <button
             type="button"
             onClick={handleToggleSave}
-            disabled={isLoading || isSaving || !detail}
+            disabled={
+              isPostLoading || isSavedLoading || !isSavedReady || isSaving || !detail
+            }
             className={`flex h-10 w-10 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-50 ${
               isSaved
                 ? "border-[#28B83F] bg-[#28B83F] text-white"
@@ -619,7 +718,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
             <button
               type="button"
               onClick={handleSaveShareImage}
-              disabled={isGeneratingShareImage}
+              disabled={isGeneratingShareImage || isScheduleLoading}
               className="flex h-10 w-10 items-center justify-center rounded-full border border-[#D8F0DD] bg-white text-[#057A55] transition active:bg-[#F1FAF3] disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="シェア画像を保存"
             >
@@ -663,10 +762,8 @@ export function PostDetailClient({ postId }: { postId: string }) {
         </div>
       </header>
 
-      {isLoading ? (
-        <div className="px-4 py-10 text-center text-sm font-medium text-zinc-500">
-          読み込み中...
-        </div>
+      {isPostLoading ? (
+        <PostDetailSkeleton />
       ) : errorMessage ? (
         <div className="px-4 py-4">
           <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-700">
@@ -696,13 +793,15 @@ export function PostDetailClient({ postId }: { postId: string }) {
               <OverviewSlide
                 detail={detail}
                 currentUserId={userId}
+                isAuthorLoading={isAuthorLoading}
+                isScheduleLoading={isScheduleLoading}
                 activeIndex={activeIndex}
                 onSelectSlide={goToSlide}
               />
-              <TimelineSlide detail={detail} />
+              <TimelineSlide detail={detail} isLoading={isScheduleLoading} />
             </div>
           </section>
-          {isOwner ? (
+          {isOwner && isGeneratingShareImage ? (
             <div className="fixed top-0 left-[-10000px] h-[450px] w-[360px] overflow-hidden">
               <div ref={shareImageRef} className="h-[450px] w-[360px] bg-transparent">
                 <SharePngTemplate
@@ -759,11 +858,15 @@ function SlideDots({
 function OverviewSlide({
   detail,
   currentUserId,
+  isAuthorLoading,
+  isScheduleLoading,
   activeIndex,
   onSelectSlide,
 }: {
   detail: DetailState;
   currentUserId: string | null;
+  isAuthorLoading: boolean;
+  isScheduleLoading: boolean;
   activeIndex: number;
   onSelectSlide: (index: number) => void;
 }) {
@@ -774,7 +877,7 @@ function OverviewSlide({
     getDurationLabel(detail.scheduleItems),
     getBudgetLabel(post.budget),
     getCompanionLabel(post.companion_type),
-  ].filter(Boolean) as string[];
+  ];
   const caption = post.caption?.trim();
   const titleLines = splitTitleByFullWidthSpace(post.title);
   const profileName = getProfileDisplayName(detail.profile);
@@ -855,24 +958,50 @@ function OverviewSlide({
           </p>
         ) : null}
 
-        {summaryLabels.length > 0 ? (
+        {summaryLabels.some(Boolean) || isScheduleLoading ? (
           <div className="mt-4 flex flex-wrap gap-2">
-            {summaryLabels.map((label) => (
-              <SummaryPill key={label}>{label}</SummaryPill>
-            ))}
+            {summaryLabels.map((label, index) =>
+              label ? (
+                <SummaryPill key={`${index}-${label}`}>{label}</SummaryPill>
+              ) : index === 1 ? (
+                <span
+                  key="duration-placeholder"
+                  className={`h-7 w-16 rounded-full border border-[#D8F0DD] bg-[#F1FAF3] ${
+                    isScheduleLoading ? "animate-pulse motion-reduce:animate-none" : ""
+                  }`}
+                  aria-label={
+                    isScheduleLoading ? "所要時間を読み込み中" : "所要時間は未設定です"
+                  }
+                />
+              ) : null,
+            )}
           </div>
         ) : null}
 
         <section className="mt-6 flex items-center justify-between gap-3 border-t border-zinc-100 pt-5">
-          {hasPublicProfile ? (
+          {isAuthorLoading ? (
+            <div
+              className="flex min-w-0 flex-1 animate-pulse items-center gap-3 motion-reduce:animate-none"
+              aria-label="投稿者を読み込み中"
+            >
+              <div className="h-11 w-11 shrink-0 rounded-full bg-zinc-200" />
+              <div className="space-y-2">
+                <div className="h-3.5 w-28 rounded-full bg-zinc-200" />
+                <div className="h-3 w-20 rounded-full bg-zinc-100" />
+              </div>
+            </div>
+          ) : hasPublicProfile ? (
             <Link href={profileHref} className="flex min-w-0 items-center gap-3">
               {profileIdentity}
             </Link>
           ) : (
             <div className="flex min-w-0 items-center gap-3">{profileIdentity}</div>
           )}
-          {currentUserId !== post.user_id && hasPublicProfile ? (
-            <FollowButton targetUserId={post.user_id} currentUserId={currentUserId} />
+          {hasPublicProfile && currentUserId !== post.user_id ? (
+            <FollowButton
+              targetUserId={post.user_id}
+              currentUserId={currentUserId}
+            />
           ) : null}
         </section>
 
@@ -891,7 +1020,13 @@ function OverviewSlide({
   );
 }
 
-function TimelineSlide({ detail }: { detail: DetailState }) {
+function TimelineSlide({
+  detail,
+  isLoading,
+}: {
+  detail: DetailState;
+  isLoading: boolean;
+}) {
   const post = detail.post;
   const areaLabel = formatAreaLabel(post.area);
   const displayScheduleItems = toRoutyDisplayScheduleItems(detail.scheduleItems);
@@ -942,7 +1077,24 @@ function TimelineSlide({ detail }: { detail: DetailState }) {
       <div className="mt-5 border-t border-zinc-100 pt-5">
         <h2 className="text-xl font-semibold text-zinc-950">タイムライン</h2>
 
-        {displayScheduleItems.length === 0 ? (
+        {isLoading ? (
+          <div
+            className="mt-6 animate-pulse space-y-7 motion-reduce:animate-none"
+            role="status"
+            aria-label="タイムラインを読み込み中"
+          >
+            {Array.from({ length: 4 }, (_, index) => (
+              <div key={index} className="grid grid-cols-[16px_1fr] gap-3">
+                <div className="mt-1.5 h-3.5 w-3.5 rounded-full bg-emerald-200" />
+                <div className="space-y-2">
+                  <div className="h-3 w-16 rounded-full bg-emerald-100" />
+                  <div className="h-4 w-2/3 rounded-full bg-zinc-200" />
+                  <div className="h-3 w-1/2 rounded-full bg-zinc-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : displayScheduleItems.length === 0 ? (
           <p className="mt-5 rounded-xl bg-zinc-50 px-4 py-5 text-sm font-medium text-zinc-500">
             スケジュールが登録されていません
           </p>

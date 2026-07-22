@@ -21,6 +21,33 @@ function isPublicPath(pathname: string) {
   return publicPaths.some((path) => pathname === path);
 }
 
+function getRouteTarget(
+  pathname: string,
+  session: Session | null,
+  profile?: AuthProfile,
+) {
+  if (!session && !isPublicPath(pathname)) {
+    return "/login";
+  }
+
+  if (!session || !profile) {
+    return null;
+  }
+
+  const hasCompletedProfile =
+    profile.profile_completed && Boolean(profile.username?.trim());
+
+  if (!hasCompletedProfile) {
+    return pathname === ACCOUNT_SETUP_PATH ? null : ACCOUNT_SETUP_PATH;
+  }
+
+  if (pathname === "/login" || pathname === ACCOUNT_SETUP_PATH) {
+    return "/home";
+  }
+
+  return null;
+}
+
 function getErrorDetails(error: unknown) {
   if (!error || typeof error !== "object") {
     return {
@@ -161,6 +188,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isChecking, setIsChecking] = useState(true);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<AuthProfile>();
   const checkedUserIdRef = useRef<string | null>(null);
   const authCheckIdRef = useRef(0);
 
@@ -176,49 +205,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.replace(`/login?error=${EMAIL_REQUIRED_ERROR}`);
   }, [router]);
 
-  const getRouteTarget = useCallback(
-    (session: Session | null, profile?: AuthProfile) => {
-      if (!session && !isPublicPath(pathname)) {
-        return "/login";
-      }
-
-      if (!session || !profile) {
-        return null;
-      }
-
-      const hasCompletedProfile =
-        profile.profile_completed && Boolean(profile.username?.trim());
-
-      if (!hasCompletedProfile) {
-        return pathname === ACCOUNT_SETUP_PATH ? null : ACCOUNT_SETUP_PATH;
-      }
-
-      if (pathname === "/login" || pathname === ACCOUNT_SETUP_PATH) {
-        return "/home";
-      }
-
-      return null;
-    },
-    [pathname],
-  );
-
   const processSession = useCallback(
     async (session: Session | null) => {
       const authCheckId = authCheckIdRef.current + 1;
       authCheckIdRef.current = authCheckId;
-      setIsChecking(true);
-      let isRedirecting = false;
 
       try {
         if (!session) {
           checkedUserIdRef.current = null;
-          const target = getRouteTarget(null);
-
-          if (target) {
-            isRedirecting = true;
-            router.replace(target);
-          }
-
+          setSession(null);
+          setProfile(undefined);
           return;
         }
 
@@ -252,13 +248,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const profile = await ensureProfile(session.user);
 
         if (authCheckIdRef.current !== authCheckId) return;
-
-        const target = getRouteTarget(session, profile);
-
-        if (target) {
-          isRedirecting = true;
-          router.replace(target);
-        }
+        setSession(session);
+        setProfile(profile);
       } catch (error) {
         if (authCheckIdRef.current !== authCheckId) return;
         logAuthError(error);
@@ -266,12 +257,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await supabase.auth.signOut();
         router.replace("/login");
       } finally {
-        if (authCheckIdRef.current === authCheckId && !isRedirecting) {
+        if (authCheckIdRef.current === authCheckId) {
           setIsChecking(false);
         }
       }
     },
-    [getRouteTarget, handleEmailRequired, handleInviteOnly, router],
+    [handleEmailRequired, handleInviteOnly, router],
   );
 
   useEffect(() => {
@@ -295,14 +286,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [processSession]);
 
-  const isRouteChecking = isChecking;
+  useEffect(() => {
+    function handleProfileUpdated(event: Event) {
+      const updatedProfile = (event as CustomEvent<Partial<AuthProfile>>).detail;
+
+      setProfile((currentProfile) =>
+        currentProfile ? { ...currentProfile, ...updatedProfile } : currentProfile,
+      );
+    }
+
+    window.addEventListener("routy:profile-updated", handleProfileUpdated);
+    return () => {
+      window.removeEventListener("routy:profile-updated", handleProfileUpdated);
+    };
+  }, []);
+
+  const routeTarget = isChecking
+    ? null
+    : getRouteTarget(pathname, session, profile);
+
+  useEffect(() => {
+    if (routeTarget) {
+      router.replace(routeTarget);
+    }
+  }, [routeTarget, router]);
+
+  const isRouteChecking = isChecking || Boolean(routeTarget);
 
   return (
     <>
       {isRouteChecking ? (
-        <div className="flex min-h-screen items-center justify-center bg-white text-zinc-950">
-          <p className="text-2xl font-semibold tracking-normal">ROUTY</p>
-        </div>
+        <div className="min-h-screen bg-white" aria-hidden="true" />
       ) : null}
       <div className={isRouteChecking ? "hidden" : undefined}>
         {children}

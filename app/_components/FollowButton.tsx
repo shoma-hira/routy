@@ -19,6 +19,7 @@ export function FollowButton({
   initialIsFollowing?: boolean;
 }) {
   const [isCurrentUserTarget, setIsCurrentUserTarget] = useState(false);
+  const [resolvedCurrentUserId, setResolvedCurrentUserId] = useState<string | null>(null);
   const [isFollowed, setIsFollowed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
@@ -31,12 +32,19 @@ export function FollowButton({
       setIsLoading(true);
       setErrorMessage(null);
 
+      if (currentUserId === null) {
+        setResolvedCurrentUserId(null);
+        setIsCurrentUserTarget(false);
+        return;
+      }
+
       try {
         const loginUserId = currentUserId ?? (await getCurrentUserId());
         const isSelf = loginUserId === targetUserId;
 
         if (!isMounted) return;
 
+        setResolvedCurrentUserId(loginUserId);
         setIsCurrentUserTarget(isSelf);
 
         if (isSelf) {
@@ -74,7 +82,15 @@ export function FollowButton({
   }, [currentUserId, initialIsFollowing, targetUserId]);
 
   async function handleToggleFollow() {
-    if (isLoading || isMutating || isCurrentUserTarget) return;
+    if (
+      isLoading ||
+      isMutating ||
+      isCurrentUserTarget ||
+      !resolvedCurrentUserId ||
+      errorMessage
+    ) {
+      return;
+    }
 
     const previousIsFollowed = isFollowed;
 
@@ -84,9 +100,9 @@ export function FollowButton({
 
     try {
       if (previousIsFollowed) {
-        await unfollowUser(targetUserId);
+        await unfollowUser(targetUserId, resolvedCurrentUserId);
       } else {
-        await followUser(targetUserId);
+        await followUser(targetUserId, resolvedCurrentUserId);
       }
     } catch (error) {
       console.error("ROUTY follow toggle failed", error);
@@ -106,7 +122,7 @@ export function FollowButton({
       <button
         type="button"
         onClick={handleToggleFollow}
-        disabled={isLoading || isMutating}
+        disabled={isLoading || isMutating || !resolvedCurrentUserId || Boolean(errorMessage)}
         className={`h-9 rounded-full px-4 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
           isFollowed
             ? "border border-[#28B83F] bg-white text-[#057A55] active:bg-[#F1FAF3]"

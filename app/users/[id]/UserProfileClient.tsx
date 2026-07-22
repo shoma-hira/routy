@@ -7,7 +7,10 @@ import { useEffect, useState } from "react";
 import { AppShell } from "../../_components/AppShell";
 import { FollowButton } from "../../_components/FollowButton";
 import { PostCard, type PostCardPost } from "../../_components/PostCard";
-import { getCurrentUserId, getFollowCounts } from "@/lib/follows";
+import {
+  getCurrentUserId,
+  getFollowCounts,
+} from "@/lib/follows";
 import { getPublicProfileById, type PublicProfile } from "@/lib/profiles";
 import { formatRouteDuration, parseDurationMinutes } from "@/lib/routeTime";
 import { getReadableSupabaseError } from "@/lib/savedPosts";
@@ -388,7 +391,10 @@ export function UserProfileClient({ userId }: { userId: string }) {
 
               {!isOwnProfile ? (
                 <div className="mt-6">
-                  <FollowButton targetUserId={userId} currentUserId={currentUserId} />
+                  <FollowButton
+                    targetUserId={userId}
+                    currentUserId={currentUserId}
+                  />
                 </div>
               ) : null}
             </section>

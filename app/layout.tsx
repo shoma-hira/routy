@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { AppSplash } from "./_components/AppSplash";
 import { AuthProvider } from "./_components/AuthProvider";
 import "./globals.css";
 
@@ -81,10 +80,7 @@ export default function RootLayout({
   return (
     <html lang="ja" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
-        <AuthProvider>
-          {children}
-          <AppSplash />
-        </AuthProvider>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

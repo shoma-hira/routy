@@ -179,7 +179,7 @@ export default function MyPage() {
         const currentUserId = await getCurrentUserId();
         const [currentProfile, postsResult, savedResult, followCountsResult] =
           await Promise.all([
-            getCurrentProfile(),
+            getCurrentProfile(currentUserId),
             supabase
               .from("posts")
               .select(

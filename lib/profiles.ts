@@ -160,8 +160,8 @@ export function validateHobbyTags(tags: string[]) {
   return null;
 }
 
-export async function getCurrentProfile() {
-  const userId = await getAuthenticatedUserId();
+export async function getCurrentProfile(currentUserId?: string) {
+  const userId = currentUserId ?? (await getAuthenticatedUserId());
   const { data, error } = await supabase
     .from("profiles")
     .select(currentProfileColumns)
@@ -276,5 +276,13 @@ export async function saveProfile(input: SaveProfileInput) {
     throw error;
   }
 
-  return data as PublicProfile;
+  const savedProfile = data as PublicProfile;
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("routy:profile-updated", { detail: savedProfile }),
+    );
+  }
+
+  return savedProfile;
 }

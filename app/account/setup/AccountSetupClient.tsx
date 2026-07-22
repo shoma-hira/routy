@@ -87,7 +87,6 @@ export function AccountSetupClient() {
         markCompleted: true,
       });
       router.replace("/home");
-      router.refresh();
     } catch (error) {
       setIsSaving(false);
       throw error;
