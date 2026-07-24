@@ -90,6 +90,23 @@ export type Database = {
           updated_at?: string | null;
         };
       };
+      post_likes: {
+        Row: {
+          user_id: string;
+          post_id: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          post_id: string;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          post_id?: string;
+          created_at?: string;
+        };
+      };
       profiles: {
         Row: {
           id: string;

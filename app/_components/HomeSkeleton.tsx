@@ -1,31 +1,35 @@
-const skeletonCards = Array.from({ length: 6 }, (_, index) => index);
+const cards = Array.from({ length: 3 }, (_, index) => index);
 
-function PostCardSkeleton() {
+function FeedCardSkeleton() {
   return (
-    <article
-      className="min-w-0 overflow-hidden rounded-2xl border border-[#D8F0DD] bg-white shadow-[0_8px_22px_rgba(17,24,39,0.06)]"
-      aria-hidden="true"
-    >
-      <div className="aspect-[16/10] w-full bg-[#EEF7F0]" />
-
-      <div className="p-3">
-        <div className="min-h-[38px] space-y-2 py-0.5">
-          <div className="h-3.5 w-11/12 rounded-full bg-zinc-200/80" />
-          <div className="h-3.5 w-3/4 rounded-full bg-zinc-200/80" />
+    <article className="overflow-hidden rounded-[20px] border border-[#D8F0DD] bg-white shadow-[0_8px_22px_rgba(17,24,39,0.06)]">
+      <div className="relative">
+        <div className="grid aspect-[16/9] grid-cols-[3fr_2fr] gap-0.5 bg-white">
+          <div className="bg-[#EAF4EC]" />
+          <div className="grid grid-rows-2 gap-0.5">
+            <div className="bg-[#EAF4EC]" />
+            <div className="bg-[#EAF4EC]" />
+          </div>
         </div>
-
-        <div className="mt-1.5 flex h-4 items-center gap-1">
-          <div className="h-2.5 w-2.5 rounded-full bg-[#D8F0DD]" />
-          <div className="h-2.5 w-2/3 rounded-full bg-[#D8F0DD]" />
+        <div className="absolute left-2.5 top-2.5 flex h-9 w-28 items-center gap-2">
+          <div className="h-7 w-7 shrink-0 rounded-full bg-white/60 ring-1 ring-white" />
+          <div className="h-2.5 w-14 rounded-full bg-white/65" />
         </div>
+        <div className="absolute right-2.5 top-2.5 flex h-11 w-11 items-center justify-center">
+          <div className="h-5 w-4 border-x-2 border-t-2 border-white/60" />
+        </div>
+      </div>
 
-        <div className="mt-2 grid grid-cols-2 gap-1.5">
-          {Array.from({ length: 4 }, (_, index) => (
-            <div
-              key={index}
-              className="h-[18px] rounded-full border border-[#D8F0DD] bg-[#F1FAF3]"
-            />
-          ))}
+      <div className="px-3.5 pb-3 pt-2.5">
+        <div className="h-4 w-4/5 rounded-full bg-[#DDE7DF]" />
+        <div className="mt-2 flex gap-3">
+          <div className="h-3 w-24 rounded-full bg-[#E8EEE9]" />
+          <div className="h-3 w-20 rounded-full bg-[#E8EEE9]" />
+        </div>
+        <div className="mt-2 flex h-5 gap-1.5">
+          <div className="h-5 w-14 rounded-full bg-[#EAF4EC]" />
+          <div className="h-5 w-16 rounded-full bg-[#EAF4EC]" />
+          <div className="h-5 w-12 rounded-full bg-[#EAF4EC]" />
         </div>
       </div>
     </article>
@@ -35,14 +39,14 @@ function PostCardSkeleton() {
 export function HomeSkeleton() {
   return (
     <div
-      className="grid animate-pulse grid-cols-2 gap-3 px-4 py-4 pb-[calc(9rem+env(safe-area-inset-bottom))] motion-reduce:animate-none"
+      className="animate-pulse space-y-4 px-4 py-5 pb-[calc(2rem+env(safe-area-inset-bottom))] motion-reduce:animate-none"
       role="status"
-      aria-label="投稿を読み込み中"
+      aria-label="ホームを読み込み中"
     >
-      {skeletonCards.map((index) => (
-        <PostCardSkeleton key={index} />
+      {cards.map((index) => (
+        <FeedCardSkeleton key={index} />
       ))}
-      <span className="sr-only">投稿を読み込んでいます</span>
+      <span className="sr-only">ホームを読み込んでいます</span>
     </div>
   );
 }
