@@ -251,7 +251,7 @@ function sortScheduleItems(items: ScheduleItemRow[]) {
 
 function SummaryPill({ children }: { children: string }) {
   return (
-    <span className="rounded-full border border-[#D8F0DD] bg-[#F1FAF3] px-3 py-1.5 text-xs font-semibold text-[#057A55]">
+    <span className="box-border flex min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-[14px] border border-[#D8F0DD] bg-white px-1 py-2 text-[clamp(8px,2.3vw,11px)] font-semibold text-[#057A55] shadow-sm">
       {children}
     </span>
   );
@@ -787,7 +787,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
             <div
               ref={scrollerRef}
               onScroll={handleScroll}
-              className="flex touch-pan-y snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="block"
               aria-label="投稿詳細スライド"
             >
               <OverviewSlide
@@ -855,171 +855,37 @@ function SlideDots({
   );
 }
 
-function OverviewSlide({
-  detail,
-  currentUserId,
-  isAuthorLoading,
-  isScheduleLoading,
-  activeIndex,
-  onSelectSlide,
-}: {
-  detail: DetailState;
-  currentUserId: string | null;
-  isAuthorLoading: boolean;
-  isScheduleLoading: boolean;
-  activeIndex: number;
-  onSelectSlide: (index: number) => void;
-}) {
+function normalizeDisplayTitle(value: string | null | undefined) {
+  return value?.replace(/[\s　]+/g, " ").trim() || "";
+}
+
+function OverviewSlide({ detail, currentUserId, isAuthorLoading, isScheduleLoading }: { detail: DetailState; currentUserId: string | null; isAuthorLoading: boolean; isScheduleLoading: boolean; activeIndex: number; onSelectSlide: (index: number) => void }) {
   const post = detail.post;
-  const areaLabel = formatAreaLabel(post.area);
-  const summaryLabels = [
-    getTransportLabel(post.transport_type),
-    getDurationLabel(detail.scheduleItems),
-    getBudgetLabel(post.budget),
-    getCompanionLabel(post.companion_type),
-  ];
+  const areaLabel = formatAreaLabel(post.area)?.replace(/\s*エリア$/u, "");
+  const summaryLabels = [areaLabel, getTransportLabel(post.transport_type), getDurationLabel(detail.scheduleItems), getBudgetLabel(post.budget), getCompanionLabel(post.companion_type)].filter(Boolean) as string[];
   const caption = post.caption?.trim();
-  const titleLines = splitTitleByFullWidthSpace(post.title);
   const profileName = getProfileDisplayName(detail.profile);
-  const profileHref = `/users/${post.user_id}`;
-  const profileUsername = detail.profile?.profile_completed
-    ? detail.profile.username?.trim() || null
-    : null;
+  const profileUsername = detail.profile?.profile_completed ? detail.profile.username?.trim() || null : null;
   const hasPublicProfile = Boolean(profileUsername);
-  const profileIdentity = (
-    <>
-      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-zinc-950">
-        {detail.profile?.avatar_url?.trim() ? (
-          <Image
-            src={detail.profile.avatar_url.trim()}
-            alt={`${profileName}のプロフィール画像`}
-            fill
-            unoptimized
-            sizes="44px"
-            className="object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-base font-bold text-white">
-            {getProfileInitial(profileName)}
-          </div>
-        )}
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-bold text-[#111827]">{profileName}</p>
-        {profileUsername ? (
-          <p className="mt-0.5 truncate text-xs font-medium text-zinc-500">
-            @{profileUsername}
-          </p>
-        ) : null}
-      </div>
-    </>
-  );
-
   return (
-    <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white pb-2">
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#F1FAF3]">
-        {post.cover_image_url?.trim() ? (
-          <Image
-            src={post.cover_image_url.trim()}
-            alt={`${post.title}のサムネイル画像`}
-            fill
-            unoptimized
-            priority
-            sizes="min(100vw, 430px)"
-            className="object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center px-4 text-sm font-semibold text-[#057A55]/60">
-            画像未設定
+    <section className="w-full bg-[#FFFCF7] px-6 pb-2 pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <Link href={`/users/${post.user_id}`} className="flex min-w-0 items-center gap-3">
+          <div className="relative h-[clamp(52px,14vw,60px)] w-[clamp(52px,14vw,60px)] shrink-0 overflow-hidden rounded-full bg-zinc-900">
+            {detail.profile?.avatar_url?.trim() ? <Image src={detail.profile.avatar_url.trim()} alt="プロフィール画像" fill unoptimized sizes="56px" className="object-cover" /> : <div className="flex h-full items-center justify-center text-lg font-bold text-white">{getProfileInitial(profileName)}</div>}
           </div>
-        )}
+          <div className="min-w-0"><p className="truncate text-[17px] font-bold text-zinc-900">{profileName}</p>{profileUsername ? <p className="truncate text-sm text-zinc-500">@{profileUsername}</p> : null}</div>
+        </Link>
+        {hasPublicProfile && currentUserId !== post.user_id ? <FollowButton targetUserId={post.user_id} currentUserId={currentUserId} /> : null}
       </div>
-
-      <SlideDots activeIndex={activeIndex} onSelect={onSelectSlide} />
-
-      <div className="px-5 pb-7 pt-2">
-        <h1
-          className={`text-2xl font-bold leading-8 text-[#111827] ${
-            titleLines ? "" : "line-clamp-2"
-          }`}
-        >
-          {titleLines ? (
-            <>
-              <span className="block">{titleLines[0]}</span>
-              <span className="block">{titleLines[1]}</span>
-            </>
-          ) : (
-            post.title
-          )}
-        </h1>
-        {areaLabel ? (
-          <p className="mt-2 flex min-w-0 items-center gap-1.5 text-sm font-semibold text-[#057A55]">
-            <span className="truncate">{areaLabel}</span>
-          </p>
-        ) : null}
-
-        {summaryLabels.some(Boolean) || isScheduleLoading ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {summaryLabels.map((label, index) =>
-              label ? (
-                <SummaryPill key={`${index}-${label}`}>{label}</SummaryPill>
-              ) : index === 1 ? (
-                <span
-                  key="duration-placeholder"
-                  className={`h-7 w-16 rounded-full border border-[#D8F0DD] bg-[#F1FAF3] ${
-                    isScheduleLoading ? "animate-pulse motion-reduce:animate-none" : ""
-                  }`}
-                  aria-label={
-                    isScheduleLoading ? "所要時間を読み込み中" : "所要時間は未設定です"
-                  }
-                />
-              ) : null,
-            )}
-          </div>
-        ) : null}
-
-        <section className="mt-6 flex items-center justify-between gap-3 border-t border-zinc-100 pt-5">
-          {isAuthorLoading ? (
-            <div
-              className="flex min-w-0 flex-1 animate-pulse items-center gap-3 motion-reduce:animate-none"
-              aria-label="投稿者を読み込み中"
-            >
-              <div className="h-11 w-11 shrink-0 rounded-full bg-zinc-200" />
-              <div className="space-y-2">
-                <div className="h-3.5 w-28 rounded-full bg-zinc-200" />
-                <div className="h-3 w-20 rounded-full bg-zinc-100" />
-              </div>
-            </div>
-          ) : hasPublicProfile ? (
-            <Link href={profileHref} className="flex min-w-0 items-center gap-3">
-              {profileIdentity}
-            </Link>
-          ) : (
-            <div className="flex min-w-0 items-center gap-3">{profileIdentity}</div>
-          )}
-          {hasPublicProfile && currentUserId !== post.user_id ? (
-            <FollowButton
-              targetUserId={post.user_id}
-              currentUserId={currentUserId}
-            />
-          ) : null}
-        </section>
-
-        {caption ? (
-          <section className="mt-7 border-t border-zinc-100 pt-6">
-            <h2 className="text-lg font-bold text-[#111827]">
-              このルートのポイント
-            </h2>
-            <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-zinc-800">
-              {caption}
-            </p>
-          </section>
-        ) : null}
+      <div className="mt-4 box-border w-full max-w-full">
+        <h1 className="box-border w-full max-w-full whitespace-nowrap text-[clamp(18px,5.5vw,30px)] font-bold leading-[1.2] tracking-[-0.02em] text-zinc-900">{normalizeDisplayTitle(post.title)}</h1>
       </div>
+      {caption ? <p className="mt-2 whitespace-pre-wrap text-[15px] leading-[1.6] text-zinc-700">{caption}</p> : null}
+      {summaryLabels.length > 0 || isScheduleLoading ? <div className="mt-5 grid grid-cols-[1.25fr_1fr_1.2fr_1fr_.75fr] gap-1 overflow-hidden pb-1">{summaryLabels.map((label, index) => <SummaryPill key={`${index}-${label}`}>{label}</SummaryPill>)}{isScheduleLoading ? <span className="h-9 min-w-0 rounded-xl border border-zinc-100 bg-white" /> : null}</div> : null}
     </section>
   );
 }
-
 function TimelineSlide({
   detail,
   isLoading,
@@ -1033,8 +899,8 @@ function TimelineSlide({
   const titleLines = splitTitleByFullWidthSpace(post.title);
 
   return (
-    <section className="min-h-[calc(100dvh-112px)] w-full min-w-full shrink-0 snap-start overflow-y-auto bg-white px-5 pb-8 pt-5">
-      <div className="flex items-center gap-3">
+    <section className="w-full bg-white px-5 pb-[calc(110px+env(safe-area-inset-bottom))] pt-3">
+      <div className="hidden">
         <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-emerald-50">
           {post.cover_image_url?.trim() ? (
             <Image
@@ -1074,7 +940,7 @@ function TimelineSlide({
         </div>
       </div>
 
-      <div className="mt-5 border-t border-zinc-100 pt-5">
+      <div className="mt-3 border-t border-zinc-100 pt-3">
         <h2 className="text-xl font-semibold text-zinc-950">タイムライン</h2>
 
         {isLoading ? (
@@ -1099,9 +965,9 @@ function TimelineSlide({
             スケジュールが登録されていません
           </p>
         ) : (
-          <div className="relative mt-6">
+          <div className="relative mt-4 w-full min-w-0">
             <div className="absolute left-[7px] top-3 h-[calc(100%-24px)] w-px bg-emerald-200" />
-            <div className="space-y-7">
+            <div className="space-y-4">
               {displayScheduleItems.map((item) => (
                 <TimelineItem
                   key={item.raw.id || `${item.raw.post_id}-${item.displayNumber}`}
@@ -1116,60 +982,46 @@ function TimelineSlide({
   );
 }
 
-function TimelineItem({
-  item,
-}: {
-  item: RoutyDisplayScheduleItem<ScheduleItemRow>;
-}) {
+function TimelineItem({ item }: { item: RoutyDisplayScheduleItem<ScheduleItemRow> }) {
   const tags = parseRoutyDisplayTags(item.displaySubtitle);
-
+  const timeParts = (item.displayTime?.replace(/\s+/g, " ").trim() || "--:--").split(/\s*[〜～-]\s*/);
+  const startTime = timeParts[0] || "--:--";
+  const endTime = timeParts[1] || "";
+  const hasPhoto = Boolean(item.imageUrl);
+  const hasNote = Boolean(item.displayNote?.trim());
   return (
-    <div className="grid grid-cols-[16px_1fr] gap-3">
-      <div className="relative pt-2">
-        <span className="relative z-10 block h-3.5 w-3.5 rounded-full border-[3px] border-white bg-emerald-600 shadow-[0_0_0_1px_rgba(5,150,105,0.25)]" />
-      </div>
-
-      <div className="min-w-0">
-        <p className="text-xs font-bold tabular-nums text-emerald-700">
-          {item.displayTime || "時刻未設定"}
-        </p>
-        <div className={item.imageUrl ? "mt-2 grid grid-cols-[1fr_88px] gap-3" : "mt-2"}>
-          <div className="min-w-0">
-            <h3 className="text-base font-semibold leading-6 text-zinc-950">
-              {item.displayTitle || "名称未設定"}
-            </h3>
-            {tags.length > 0 ? (
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-sm font-semibold leading-6 text-blue-600"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-            {item.displayNote ? (
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-600">
-                {item.displayNote}
-              </p>
-            ) : null}
-          </div>
-          {item.imageUrl ? (
-            <div className="relative h-24 overflow-hidden rounded-xl bg-zinc-100">
-              <Image
-                src={item.imageUrl}
-                alt={`${item.displayTitle || item.contentName}の画像`}
-                fill
-                unoptimized
-                sizes="88px"
-                className="object-cover"
-              />
+    <article className="relative border-b border-dashed border-zinc-200 py-2 pl-5 last:border-b-0">
+      <span aria-hidden="true" className="absolute left-0 top-2 h-3.5 w-3.5 rounded-full border-[3px] border-white bg-emerald-600" />
+      <div className="grid w-full min-w-0 grid-cols-[72px_minmax(0,1fr)] gap-x-3">
+        <div className="flex min-w-0 flex-col items-center pt-0.5 text-[clamp(11px,3.1vw,13px)] font-bold leading-5 tabular-nums text-emerald-700">
+          <span className="whitespace-nowrap">{startTime}</span>
+          {endTime ? <span aria-hidden="true" className="my-0.5 h-3 w-px bg-emerald-300" /> : null}
+          {endTime ? <span className="whitespace-nowrap">{endTime}</span> : null}
+        </div>
+        <div className="min-w-0">
+          <h3 className="break-words text-[16px] font-bold leading-6 text-zinc-950 [word-break:normal]">{item.displayTitle || "スポット未設定"}</h3>
+          {tags.length > 0 ? <div className="mt-1 flex flex-wrap gap-1">{tags.slice(0, 3).map((tag) => <span key={tag} className="whitespace-nowrap rounded-md bg-emerald-50 px-1.5 py-0.5 text-[clamp(8px,2.3vw,10px)] font-semibold text-emerald-800">{tag}</span>)}</div> : null}
+          {hasPhoto && hasNote ? (
+            <div className="mt-2 grid w-full min-w-0 grid-cols-[clamp(112px,36vw,145px)_minmax(0,1fr)] items-start gap-2.5">
+              <div className="w-full min-w-0 shrink-0"><TimelinePhoto imageUrl={item.imageUrl!} title={item.displayTitle || item.contentName} /></div>
+              <p className="relative w-full min-w-0 rounded-[16px] border border-[#e7dfd2] bg-[#f7f2e9] px-3 py-2.5 whitespace-pre-wrap break-normal text-[clamp(10px,3vw,12px)] leading-[1.5] text-zinc-600 shadow-sm before:absolute before:left-[-7px] before:top-5 before:h-3 before:w-3 before:rotate-45 before:border-b before:border-l before:border-[#e7dfd2] before:bg-[#f7f2e9] [overflow-wrap:normal] [word-break:normal]">{item.displayNote}</p>
             </div>
+          ) : hasPhoto ? (
+            <div className="mt-2 w-[clamp(112px,36vw,145px)]"><TimelinePhoto imageUrl={item.imageUrl!} title={item.displayTitle || item.contentName} /></div>
+          ) : hasNote ? (
+            <p className="relative mt-2 w-full min-w-0 rounded-[16px] border border-[#e7dfd2] bg-[#f7f2e9] px-3 py-2.5 whitespace-pre-wrap break-normal text-[clamp(10px,3vw,12px)] leading-[1.5] text-zinc-600 shadow-sm [overflow-wrap:normal] [word-break:normal]">{item.displayNote}</p>
           ) : null}
         </div>
       </div>
-    </div>
+
+    </article>
   );
+}
+
+function TimelinePhoto({ imageUrl, title }: { imageUrl: string; title: string }) {
+  const [open, setOpen] = useState(false);
+  return <>
+    <button type="button" className="relative h-[104px] w-[104px] overflow-hidden rounded-xl bg-zinc-100" onClick={() => setOpen(true)} aria-label="写真を拡大"><Image src={imageUrl} alt={`${title}の写真`} fill unoptimized sizes="104px" className="object-cover" /></button>
+    {open ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" onClick={() => setOpen(false)}><Image src={imageUrl} alt={`${title}の写真`} width={1200} height={900} unoptimized className="max-h-[90vh] w-auto max-w-full rounded-lg object-contain" onClick={(event) => event.stopPropagation()} /><button type="button" className="absolute right-4 top-4 h-11 w-11 rounded-full bg-white text-xl" onClick={() => setOpen(false)} aria-label="閉じる">×</button></div> : null}
+  </>;
 }

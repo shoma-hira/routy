@@ -17,6 +17,7 @@ import { compressImageForUpload } from "@/lib/compressImage";
 import { supabase } from "@/lib/supabase";
 
 export type ScheduleContent = {
+  clientId: string;
   contentName: string;
   contentCategory?: string;
   contentDetail?: string;
@@ -28,6 +29,10 @@ export type ScheduleContent = {
   placeName?: string;
   stayDuration?: string;
   imageUrl?: string;
+  imageFile?: File | null;
+  imagePreviewUrl?: string | null;
+  imageError?: string | null;
+  shouldDeleteImage?: boolean;
   start_time?: string | null;
   end_time?: string | null;
   content_name?: string | null;
@@ -41,6 +46,7 @@ export type ScheduleContent = {
   isTouched?: boolean;
 };
 export type ScheduleItemInput = {
+  clientId?: string;
   contentName?: string | null;
   contentCategory?: string | null;
   contentDetail?: string | null;
@@ -155,6 +161,7 @@ const timeOptions = Array.from(
 
 function emptyContent(): ScheduleContent {
   return {
+    clientId: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
     contentName: "",
     contentCategory: "",
     contentDetail: "",
@@ -230,6 +237,7 @@ export function normalizeScheduleItem(item: ScheduleItemInput): ScheduleContent 
   return {
     ...emptyContent(),
     ...item,
+    clientId: item.clientId ?? (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`),
     contentName: contentName.trim(),
     contentCategory: item.contentCategory ?? "",
     contentDetail: item.contentDetail ?? "",
@@ -735,6 +743,14 @@ export function CreateBookmarkForm({
 
   useEffect(() => {
     return () => {
+      schedule.forEach((item) => {
+        if (item.imagePreviewUrl) URL.revokeObjectURL(item.imagePreviewUrl);
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
       }
@@ -1056,6 +1072,17 @@ export function CreateBookmarkForm({
     });
   }
 
+  function updateDraftImage(file: File | null) {
+    setDraftEvent((current) => {
+      if (!current) return current;
+      if (current.item.imagePreviewUrl) URL.revokeObjectURL(current.item.imagePreviewUrl);
+      if (!file) return { ...current, item: { ...current.item, imageFile: null, imagePreviewUrl: null, imageError: null, shouldDeleteImage: true } };
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) return { ...current, item: { ...current.item, imageError: "JPEG、PNG、WebP形式の画像を選択してください" } };
+      if (file.size > 10 * 1024 * 1024) return { ...current, item: { ...current.item, imageError: "画像サイズは10MB以下にしてください" } };
+      return { ...current, item: { ...current.item, imageFile: file, imagePreviewUrl: URL.createObjectURL(file), imageError: null, shouldDeleteImage: false } };
+    });
+  }
+
   function saveDraftEvent() {
     if (!draftEvent) return;
 
@@ -1172,6 +1199,25 @@ export function CreateBookmarkForm({
     return publicUrl;
   }
 
+  async function uploadScheduleImages(userId: string, targetPostId: string, items: ScheduleContent[], createdRows: { id: string }[]) {
+    for (const [index, item] of items.entries()) {
+      if (!item.imageFile) continue;
+      const scheduleItemId = createdRows[index]?.id;
+      if (!scheduleItemId) throw new Error("スケジュール写真の保存先を特定できませんでした。");
+      let uploadFile = item.imageFile;
+      try { uploadFile = await compressImageForUpload(item.imageFile); } catch (error) { console.warn("schedule image compression failed", error); }
+      const extension = item.imageFile.type === "image/png" ? "png" : item.imageFile.type === "image/webp" ? "webp" : "jpg";
+      const path = `${userId}/${targetPostId}/${scheduleItemId}/${item.clientId}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from(postImageBucket).upload(path, uploadFile, { cacheControl: "3600", contentType: uploadFile.type, upsert: false });
+      if (uploadError) throw new Error(`スケジュール写真のアップロードに失敗しました。${uploadError.message}`);
+      const { data } = supabase.storage.from(postImageBucket).getPublicUrl(path);
+      const publicUrl = data.publicUrl?.trim();
+      if (!publicUrl) throw new Error("スケジュール写真の公開URLを取得できませんでした。");
+      const { error: updateError } = await supabase.from("schedule_items").update({ image_url: publicUrl }).eq("id", scheduleItemId);
+      if (updateError) throw updateError;
+    }
+  }
+
   async function handleSubmit() {
     console.log(isEdit ? "ROUTY update post" : "ROUTY create post", postValue);
 
@@ -1264,24 +1310,19 @@ export function CreateBookmarkForm({
           toScheduleRow(item, postId, index),
         );
 
-        const { error: scheduleError } = await supabase
+        const { data: createdScheduleRows, error: scheduleError } = await supabase
           .from("schedule_items")
-          .insert(scheduleRows);
+          .insert(scheduleRows)
+          .select("id,post_id,sort_order")
+          .order("sort_order", { ascending: true });
 
         if (scheduleError) throw scheduleError;
+
+        await uploadScheduleImages(user.id, postId, scheduleToSave, (createdScheduleRows ?? []) as { id: string }[]);
 
         router.push("/home");
         return;
       }
-
-      const draftPostImageId =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : String(Date.now());
-      const nextCoverImageUrl = await uploadThumbnailImage(
-        user.id,
-        `draft-${draftPostImageId}`,
-      );
 
       const { data: post, error: postError } = await supabase
         .from("posts")
@@ -1295,7 +1336,6 @@ export function CreateBookmarkForm({
           budget: normalizedBudget,
           weather_type: weatherType || null,
           caption: trimmedCaption || null,
-          cover_image_url: nextCoverImageUrl,
           type: "plan",
           is_published: true,
         })
@@ -1309,11 +1349,15 @@ export function CreateBookmarkForm({
         toScheduleRow(item, post.id, index),
       );
 
-      const { error: scheduleError } = await supabase
+      const { data: createdScheduleRows, error: scheduleError } = await supabase
         .from("schedule_items")
-        .insert(scheduleRows);
+        .insert(scheduleRows)
+        .select("id,post_id,sort_order")
+        .order("sort_order", { ascending: true });
 
       if (scheduleError) throw scheduleError;
+
+      await uploadScheduleImages(user.id, post.id, scheduleToSave, (createdScheduleRows ?? []) as { id: string }[]);
 
       router.push("/home");
     } catch (error) {
@@ -1514,6 +1558,7 @@ export function CreateBookmarkForm({
           draft={draftEvent}
           fieldError={fieldError}
           onChange={updateDraft}
+          onImageChange={updateDraftImage}
           onCancel={closeDraft}
           onSave={saveDraftEvent}
           onRemove={draftEvent.index === null ? undefined : removeDraftEvent}
@@ -1694,7 +1739,7 @@ function PostMetadataStep({
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+          <div className={isEdit ? "rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100" : "hidden"}>
             <div className="mb-3 flex items-center justify-between gap-3">
               <span className="text-sm font-semibold text-zinc-950">
                 サムネイル画像
@@ -2104,6 +2149,7 @@ function EventSheet({
   draft,
   fieldError,
   onChange,
+  onImageChange,
   onCancel,
   onSave,
   onRemove,
@@ -2111,6 +2157,7 @@ function EventSheet({
   draft: DraftEvent;
   fieldError: string | null;
   onChange: (field: keyof ScheduleContent, value: string) => void;
+  onImageChange: (file: File | null) => void;
   onCancel: () => void;
   onSave: () => void;
   onRemove?: () => void;
@@ -2182,6 +2229,19 @@ function EventSheet({
               className="mt-2 h-12 w-full rounded-xl border border-zinc-100 bg-white px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-emerald-500"
             />
           </label>
+
+          <div className="rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
+            <p className="text-xs font-semibold text-zinc-600">写真</p>
+            {draft.item.imagePreviewUrl ? <img src={draft.item.imagePreviewUrl} alt="選択した写真" className="mt-2 h-32 w-32 rounded-lg object-cover" /> : null}
+            {draft.item.imageError ? <p className="mt-2 text-xs font-semibold text-red-600">{draft.item.imageError}</p> : null}
+            <div className="mt-2 flex gap-2">
+              <label className="flex h-11 cursor-pointer items-center rounded-xl border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700">
+                {draft.item.imagePreviewUrl ? "変更" : "写真を追加"}
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => onImageChange(event.target.files?.[0] ?? null)} />
+              </label>
+              {draft.item.imagePreviewUrl ? <button type="button" onClick={() => onImageChange(null)} className="h-11 rounded-xl bg-red-50 px-3 text-sm font-semibold text-red-600">削除</button> : null}
+            </div>
+          </div>
 
           <div className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
             <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">

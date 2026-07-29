@@ -34,6 +34,7 @@ type ScheduleItemRow = {
   stay_duration: string | number | null;
   sort_order: number | null;
   created_at: string | null;
+  image_url: string | null;
 };
 
 type FollowCounts = {
@@ -143,7 +144,7 @@ function toPostCard(
     durationLabel: getDurationLabel(scheduleItems),
     budgetLabel: getBudgetLabel(post.budget),
     companionLabel: getCompanionLabel(post.companion_type),
-    coverImage: post.cover_image_url?.trim() || null,
+    coverImage: scheduleItems.find((item) => item.image_url?.trim())?.image_url?.trim() || post.cover_image_url?.trim() || null,
   };
 }
 
@@ -233,7 +234,7 @@ export function UserProfileClient({ userId }: { userId: string }) {
         if (postIds.length > 0) {
           const { data: scheduleRows, error: scheduleError } = await supabase
             .from("schedule_items")
-            .select("post_id,start_time,end_time,time,stay_duration,sort_order,created_at")
+            .select("post_id,start_time,end_time,time,stay_duration,sort_order,created_at,image_url")
             .in("post_id", postIds)
             .order("sort_order", { ascending: true })
             .order("created_at", { ascending: true });
