@@ -44,6 +44,9 @@ export type ScheduleContent = {
   stay_duration?: string | number | null;
   isLegacyPlaceNameMissing?: boolean;
   isTouched?: boolean;
+  isPhotoDraft?: boolean;
+  photoSourceLabel?: string;
+  photoDraftId?: string;
 };
 export type ScheduleItemInput = {
   clientId?: string;
@@ -93,6 +96,7 @@ export type BookmarkFormValue = {
   plannedSchedule: ScheduleContent[];
   actualSchedule: ScheduleContent[];
   scheduleItems?: ScheduleContent[];
+  isPhotoDraft?: boolean;
 };
 
 type DraftEvent = {
@@ -521,7 +525,7 @@ function validateScheduleItemsForStep(items: ScheduleContent[]) {
   }
 
   const invalidPlaceItem = scheduleToValidate.find(
-    (item) => !item.placeName?.trim() && !allowsMissingPlaceName(item),
+    (item) => !item.placeName?.trim() && !allowsMissingPlaceName(item) && !item.isPhotoDraft,
   );
   if (invalidPlaceItem) {
     return "店名施設名が未入力の項目があります。項目を開いて入力してください。";
@@ -529,9 +533,10 @@ function validateScheduleItemsForStep(items: ScheduleContent[]) {
 
   const invalidTimeItem = scheduleToValidate.find(
     (item) =>
-      !hasValidScheduleTimeRange(item) ||
-      !isFiveMinuteTime(item.startTime) ||
-      !isFiveMinuteTime(item.endTime),
+      (!item.isPhotoDraft || Boolean(item.startTime || item.endTime)) &&
+      (!hasValidScheduleTimeRange(item) ||
+        !isFiveMinuteTime(item.startTime) ||
+        !isFiveMinuteTime(item.endTime)),
   );
   if (invalidTimeItem) {
     return "開始時刻と終了時刻は00:00〜26:00の5分刻みで、終了時刻が開始時刻より後になるようにしてください。";
@@ -593,16 +598,18 @@ function validatePostMetadata({
   area,
   transportType,
   budget,
+  isPhotoDraft = false,
 }: {
   title: string;
   routeDate: string;
   area: string;
   transportType: TransportType | "";
   budget: string;
+  isPhotoDraft?: boolean;
 }) {
   if (!title.trim()) return "タイトルを入力してください";
   if (!routeDate) return "日付を選択してください";
-  if (!normalizeArea(area)) return "エリアを入力してください";
+  if (!normalizeArea(area) && !isPhotoDraft) return "エリアを入力してください";
   if (!transportType) return "移動手段を選択してください";
 
   if (budget.trim()) {
@@ -628,6 +635,7 @@ export function CreateBookmarkForm({
 }) {
   const router = useRouter();
   const isEdit = mode === "edit";
+  const photoDraftMode = Boolean(initialValue?.isPhotoDraft);
   const initialThumbnailUrl = getInitialThumbnailUrl(initialValue);
   const [currentStep, setCurrentStep] =
     useState<CreateBookmarkStep>("schedule");
@@ -724,10 +732,12 @@ export function CreateBookmarkForm({
       caption,
       plannedSchedule: postType === "actual" ? [] : schedule,
       actualSchedule: postType === "actual" ? schedule : [],
+      isPhotoDraft: photoDraftMode,
     }),
     [
       area,
       budget,
+      photoDraftMode,
       caption,
       companionType,
       coverImageUrl,
@@ -1233,6 +1243,7 @@ export function CreateBookmarkForm({
       area,
       transportType,
       budget,
+      isPhotoDraft: Boolean(initialValue?.isPhotoDraft),
     });
 
     if (metadataValidationMessage) {
@@ -1392,6 +1403,7 @@ export function CreateBookmarkForm({
       area,
       transportType,
       budget,
+      isPhotoDraft: Boolean(initialValue?.isPhotoDraft),
     });
 
     if (validationMessage) {
@@ -2202,6 +2214,9 @@ function EventSheet({
             <p className="mt-1 text-xs font-semibold tabular-nums text-emerald-700">
               {draft.item.startTime}〜{draft.item.endTime} / {formatDuration(duration)}
             </p>
+            {draft.item.photoSourceLabel ? (
+              <p className="mt-1 text-[11px] font-medium text-amber-700">{draft.item.photoSourceLabel}</p>
+            ) : null}
           </div>
           {onRemove ? (
             <button
@@ -2220,7 +2235,7 @@ function EventSheet({
           <label className="block rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-100">
             <span className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-600">
               <span>店舗施設名</span>
-              <span className="text-emerald-700">必須</span>
+              <span className={draft.item.isPhotoDraft ? "text-zinc-400" : "text-emerald-700"}>{draft.item.isPhotoDraft ? "任意" : "必須"}</span>
             </span>
             <input
               value={draft.item.placeName ?? ""}
