@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { AppShell } from "../../_components/AppShell";
 import { FollowButton } from "../../_components/FollowButton";
 import { PostDetailSkeleton } from "../../_components/PostDetailSkeleton";
+import { StoryPostViewer } from "../../_components/StoryPostViewer";
 import { formatAreaLabel } from "@/lib/area";
 import {
   parseRoutyDisplayTags,
@@ -43,6 +44,7 @@ type PostRow = {
   id: string;
   user_id: string;
   title: string;
+  route_date: string | null;
   area: string | null;
   transport_type: string | null;
   companion_type: string | null;
@@ -369,7 +371,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
         const postResult = await supabase
           .from("posts")
           .select(
-            "id,user_id,title,area,transport_type,companion_type,budget,caption,cover_image_url,is_published,created_at",
+            "id,user_id,title,route_date,area,transport_type,companion_type,budget,caption,cover_image_url,is_published,created_at",
           )
           .eq("id", postId)
           .maybeSingle();
@@ -783,24 +785,15 @@ export function PostDetailClient({ postId }: { postId: string }) {
               </p>
             </div>
           ) : null}
-          <section className="relative">
-            <div
-              ref={scrollerRef}
-              onScroll={handleScroll}
-              className="block"
-              aria-label="投稿詳細スライド"
-            >
-              <OverviewSlide
-                detail={detail}
-                currentUserId={userId}
-                isAuthorLoading={isAuthorLoading}
-                isScheduleLoading={isScheduleLoading}
-                activeIndex={activeIndex}
-                onSelectSlide={goToSlide}
-              />
-              <TimelineSlide detail={detail} isLoading={isScheduleLoading} />
-            </div>
-          </section>
+          <StoryPostViewer
+            key={detail.post.id}
+            detail={detail}
+            isLoading={isScheduleLoading}
+            onClose={handleBack}
+            onSave={handleToggleSave}
+            isSaved={isSaved}
+            isSaving={isSaving}
+          />
           {isOwner && isGeneratingShareImage ? (
             <div className="fixed top-0 left-[-10000px] h-[450px] w-[360px] overflow-hidden">
               <div ref={shareImageRef} className="h-[450px] w-[360px] bg-transparent">
