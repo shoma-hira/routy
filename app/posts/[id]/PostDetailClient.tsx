@@ -791,6 +791,12 @@ export function PostDetailClient({ postId }: { postId: string }) {
             isLoading={isScheduleLoading}
             onClose={handleBack}
             onSave={handleToggleSave}
+            onShare={isOwner ? handleSaveShareImage : undefined}
+            onEdit={isOwner ? () => router.push(`/bookmarks/${postId}/edit`) : undefined}
+            onDelete={canDelete ? handleDeletePost : undefined}
+            canManage={canDelete}
+            isOwner={isOwner}
+            isDeleting={isDeleting}
             isSaved={isSaved}
             isSaving={isSaving}
           />
