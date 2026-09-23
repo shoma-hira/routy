@@ -55,10 +55,12 @@ export function StoryPostViewer({ detail, isLoading, onClose, onSave, isSaved, i
   function move(delta: number) { setIndex((value) => Math.max(0, Math.min(slides.length - 1, value + delta))); }
   if (isLoading) return <div className="flex min-h-dvh items-center justify-center bg-zinc-950 text-sm text-white/70">コンテンツを読み込み中...</div>;
 
-  return <section className="fixed inset-0 z-50 min-h-dvh overflow-hidden bg-zinc-950 text-white" aria-label="投稿ストーリー">
+  return <section className="fixed inset-0 z-50 flex min-h-dvh w-full items-center justify-center overflow-hidden bg-[#080a09] text-white" aria-label="投稿ストーリー">
+    <div className="relative h-dvh w-full max-w-[430px] overflow-hidden bg-zinc-950">
     <div className="absolute left-3 right-3 top-3 z-30 flex gap-1.5" aria-label={`全${slides.length}枚中${index + 1}枚目`}>
       {slides.map((_, itemIndex) => <span key={itemIndex} className={`h-1 flex-1 rounded-full ${itemIndex <= index ? "bg-white" : "bg-white/35"}`} />)}
     </div>
+    <p className="absolute left-4 right-4 top-14 z-30 truncate text-xs font-bold text-white/85 [text-shadow:0_1px_3px_rgba(0,0,0,.6)]">{detail.post.title}</p>
     <div className="absolute left-4 right-4 top-7 z-30 flex items-center justify-between gap-2">
       <div className="flex gap-2">
         <button type="button" onClick={(event) => { event.stopPropagation(); onSave(); }} disabled={isSaving} className="rounded-full bg-black/45 px-3 py-2 text-xs font-bold backdrop-blur">{isSaved ? "保存済み" : "保存"}</button>
@@ -75,15 +77,16 @@ export function StoryPostViewer({ detail, isLoading, onClose, onSave, isSaved, i
       <button type="button" aria-label="前のスライド" onClick={() => move(-1)} className="pointer-events-auto cursor-default" />
       <button type="button" aria-label="次のスライド" onClick={() => move(1)} className="pointer-events-auto cursor-default" />
     </div>
-    <div className="relative z-10 min-h-[calc(100dvh-3.5rem)]">
+    <div className="relative z-10 min-h-dvh">
       {current ? <StoryContentSlide item={current} index={index} total={items.length} detail={detail} failed={failedImages.has(current.id)} onImageError={() => setFailedImages((value) => new Set(value).add(current.id))} /> : <StorySummarySlide detail={detail} onSave={onSave} isSaved={isSaved} isSaving={isSaving} />}
+    </div>
     </div>
   </section>;
 }
 
 function StoryContentSlide({ item, index, total, detail, failed, onImageError }: { item: StoryItem; index: number; total: number; detail: StoryDetail; failed: boolean; onImageError: () => void }) {
   const image = text(item.image_url) && !failed;
-  const content = <div className="relative z-10 flex max-h-[72dvh] w-full max-w-[620px] flex-col justify-end overflow-y-auto px-6 pb-10 pt-24 [text-shadow:0_1px_4px_rgba(0,0,0,.6)]"><p className="text-sm font-bold text-white/80">{author(detail.profile)} · {index + 1} / {total} スポット</p><p className="mt-2 text-2xl font-black leading-tight">{spot(item)}</p>{time(item) ? <p className="mt-2 text-base font-bold">{time(item)}{item.end_time ? `〜${item.end_time}` : ""}</p> : null}{text(item.comment) ? <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-white/90">{item.comment}</p> : null}{text(item.stay_duration) ? <p className="mt-3 text-xs font-semibold text-white/80">滞在時間 {text(item.stay_duration)}</p> : null}{detail.post.caption && index === 0 ? <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-white/85">{detail.post.caption}</p> : null}{detail.post.route_date ? <p className="mt-4 text-xs font-semibold text-white/70">{dateLabel(detail.post.route_date)}</p> : null}</div>;
+  const content = <div className="relative z-10 flex max-h-[72dvh] w-full max-w-[620px] flex-col justify-end overflow-y-auto px-5 pb-8 pt-28 [text-shadow:0_1px_4px_rgba(0,0,0,.6)]"><p className="text-sm font-bold text-white/80">{author(detail.profile)} · {index + 1} / {total} スポット</p><p className="mt-2 text-[clamp(24px,7vw,32px)] font-black leading-tight">{spot(item)}</p>{time(item) ? <p className="mt-2 text-base font-bold">{time(item)}{item.end_time ? `〜${item.end_time}` : ""}</p> : null}{text(item.comment) ? <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-white/90">{item.comment}</p> : null}{text(item.stay_duration) ? <p className="mt-3 text-xs font-semibold text-white/80">滞在時間 {text(item.stay_duration)}</p> : null}{text(detail.post.caption) ? <p className="mt-4 whitespace-pre-wrap text-[15px] leading-7 text-white/85">{detail.post.caption}</p> : null}{detail.post.route_date ? <p className="mt-4 text-xs font-semibold text-white/70">{dateLabel(detail.post.route_date)}</p> : null}</div>;
   return <article className={`relative flex min-h-dvh items-end overflow-hidden ${image ? "bg-zinc-900" : "bg-gradient-to-br from-[#244636] via-[#52735d] to-[#1d2d29]"}`}>{image ? <Image src={text(item.image_url)} alt={`${spot(item)}の写真`} fill unoptimized sizes="100vw" className="object-cover" onError={onImageError} /> : null}<div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/85" />{!image ? <span className="absolute left-6 top-24 rounded-full border border-white/30 bg-black/20 px-3 py-1 text-xs font-bold text-white/80">写真なし</span> : null}{content}</article>;
 }
 
